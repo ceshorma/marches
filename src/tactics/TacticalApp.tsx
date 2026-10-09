@@ -1,3 +1,4 @@
+import { deploymentError } from "./outpost";
 import { missions } from "./campaign";
 import { composition, matchup, troopTypes, troopNames } from "./combat";
 import type { TroopType } from "./combat";
@@ -120,7 +121,7 @@ export default function TacticalApp() {
               ? s.battle.time < outpost.noticeUntil
                 ? outpost.notice
                 : !s.battle.squads.length
-                  ? "Un lancero basta para empezar."
+                  ? "Toca una celda con + junto al cuartel."
                   : !outpost.sites.some((site) => site.active)
                     ? "Lleva tu escuadrón a un emplazamiento marcado."
                     : "Las torres aseguran terreno. Tus tropas lo defienden."
@@ -180,7 +181,11 @@ export default function TacticalApp() {
             key={u.id}
             aria-label={`Seleccionar ${u.name}`}
             className={s.selected === u.id ? "chosen" : ""}
-            onClick={() => s.select(u.id)}
+            onClick={() => {
+              s.select(u.id);
+              if (outpost && !deploymentError(s.battle, u.cell))
+                useTactics.setState({ deployCell: u.cell });
+            }}
           >
             <Shield size={17} />
             <span>
@@ -318,37 +323,23 @@ export default function TacticalApp() {
             ))}
           </div>
         )}
-      {outpost && (s.selectedBase || !s.battle.squads.length) && (
-        <section className="orders" aria-label="Crear escuadrón">
-          <div className="unit-title">
-            <strong>Cuartel del Alba</strong>
-            <span>1 lancero · 1 escuadrón</span>
-          </div>
-          <button
-            aria-label="Crear escuadrón"
-            disabled={
-              s.battle.time < outpost.recruitAt || s.battle.squads.length >= 5
-            }
-            onClick={() => s.deploy()}
-          >
-            <Plus size={18} />
-            <span>
-              {s.battle.squads.length >= 5
-                ? "Compañía completa"
-                : s.battle.time < outpost.recruitAt
-                  ? `${Math.ceil(outpost.recruitAt - s.battle.time)} s`
-                  : "Crear escuadrón"}
-            </span>
-          </button>
-          {s.battle.squads.length > 0 && (
-            <button
-              aria-label="Cerrar cuartel"
-              onClick={() => useTactics.setState({ selectedBase: null })}
+      {outpost && (
+        <aside className="reserve-tray" aria-label="Tropas disponibles">
+          <small>Reserva</small>
+          {troopTypes.map((type) => (
+            <span
+              key={type}
+              title={troopNames[type]}
+              aria-label={`${troopNames[type]} disponibles: ${outpost.reserve[type]}`}
+              className={outpost.reserve[type] ? "" : "empty"}
             >
-              <X size={17} />
-            </button>
-          )}
-        </section>
+              <i className={`reserve-icon ${type}`}>
+                {type === "shield" ? "♜" : type === "bow" ? "⌁" : "♞"}
+              </i>
+              <b>{outpost.reserve[type]}</b>
+            </span>
+          ))}
+        </aside>
       )}
       {s.selectedBase && s.battle.bases && (
         <section className="orders base-orders" aria-label="Cuartel">
@@ -487,7 +478,7 @@ export default function TacticalApp() {
         </button>
       </div>
       <div className="utility">
-        {(s.battle.bases || outpost) && (
+        {s.battle.bases && (
           <button
             aria-label="Abrir cuartel aliado"
             onClick={() =>

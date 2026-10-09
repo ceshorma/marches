@@ -601,3 +601,113 @@ button:focus-visible {
     font-size: 17px;
   }
 }
+.reserve-tray {
+  position: absolute;
+  left: 28px;
+  top: 104px;
+  display: flex;
+  align-items: center;
+  gap: 13px;
+  padding: 8px 11px;
+  background: #f8f6efed;
+  border: 1px solid #d7d7c9;
+  border-radius: 5px;
+}
+.reserve-tray small {
+  font-size: 9px;
+  color: #899280;
+}
+.reserve-tray span {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  color: #397cac;
+}
+.reserve-tray b {
+  font-size: 11px;
+  font-weight: 500;
+}
+.reserve-tray .empty {
+  opacity: 0.35;
+}
+.reserve-icon {
+  font-style: normal;
+  font-size: 20px;
+  line-height: 1;
+  color: #397cac;
+}
+.reserve-icon.horse {
+  color: #76654f;
+}
+.map-recruit {
+  position: absolute;
+  z-index: 6;
+  top: -300px;
+  left: -300px;
+  border-radius: 6px;
+  background: #f8f6eff5;
+  box-shadow: 0 3px 16px #34475018;
+  border: 1px solid #b5c3b9;
+  padding: 4px;
+  min-width: 36px;
+}
+.map-recruit button {
+  font-size: 11px;
+  justify-content: flex-start;
+  min-height: 35px;
+  padding: 5px 9px;
+  gap: 9px;
+  width: 100%;
+}
+.map-recruit button b {
+  margin-left: auto;
+  font-weight: 500;
+}
+.map-recruit .map-plus {
+  font-size: 23px;
+  justify-content: center;
+  width: 32px;
+  min-width: 32px;
+  height: 32px;
+  min-height: 32px;
+  padding: 0;
+  color: #397cac;
+}
+.map-recruit-heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding-left: 9px;
+  color: #7d897d;
+  font-size: 10px;
+}
+.map-recruit-heading button {
+  width: 28px;
+  min-width: 28px;
+  min-height: 25px;
+  justify-content: center;
+  font-size: 18px;
+}
+.map-recruit:has(.map-recruit-heading) {
+  width: 185px;
+}
+@media (max-width: 700px) {
+  .reserve-tray {
+    top: 147px;
+    left: 12px;
+    gap: 10px;
+    padding: 7px;
+  }
+  .squad-list {
+    top: 215px;
+  }
+  .reserve-tray small {
+    display: none;
+  }
+  .map-recruit button {
+    min-height: 40px;
+  }
+  .map-recruit {
+    z-index: 7;
+  }
+}

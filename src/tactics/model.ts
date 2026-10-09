@@ -76,6 +76,8 @@ export type Battle = {
     noticeUntil: number;
     notice: string;
     recruitAt: number;
+    reserve: Record<TroopType, number>;
+    arrivals: number;
   };
   lesson?: {
     index: number;

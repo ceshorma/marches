@@ -1,4 +1,9 @@
-import { createOutpost, createScout, updateOutpost } from "./outpost";
+import {
+  createOutpost,
+  createScout,
+  updateOutpost,
+  addReserveTroop,
+} from "./outpost";
 import {
   createMission,
   updateMission,
@@ -15,6 +20,8 @@ type State = {
   battle: Battle;
   revision: number;
   selected: string | null;
+  deployCell: number | null;
+  placeTroop: (type: TroopType) => void;
   selectedBase: "ally" | "enemy" | null;
   deploy: (type?: TroopType) => void;
   paused: boolean;
@@ -59,6 +66,7 @@ export const useTactics = create<State>((set, get) => ({
   },
   revision: 0,
   selected: null,
+  deployCell: null,
   selectedBase: null,
   paused: false,
   speed: 1,
@@ -67,7 +75,25 @@ export const useTactics = create<State>((set, get) => ({
   orienting: false,
   message: null,
   select: (selected) =>
-    set({ selected, selectedBase: null, orienting: false, message: null }),
+    set({
+      selected,
+      deployCell: null,
+      selectedBase: null,
+      orienting: false,
+      message: null,
+    }),
+  placeTroop: (type) => {
+    const s = get();
+    if (s.deployCell === null) return;
+    const message = addReserveTroop(s.battle, s.deployCell, type);
+    set({
+      message,
+      revision: s.revision + 1,
+      ...(!message
+        ? { selected: s.battle.squads.find((u) => u.cell === s.deployCell)!.id }
+        : {}),
+    });
+  },
   deploy: (type = "shield") => {
     const s = get();
     const message = s.battle.outpost
@@ -83,6 +109,7 @@ export const useTactics = create<State>((set, get) => ({
     if (s.selected)
       set({
         message: order(s.battle, s.selected, cell),
+        deployCell: null,
         revision: s.revision + 1,
       });
   },
@@ -139,6 +166,7 @@ export const useTactics = create<State>((set, get) => ({
               ? createMission(get().missionIndex)
               : createBattle(true),
       selected: null,
+      deployCell: null,
       selectedBase: null,
       paused: false,
       speed: 1,

@@ -1,5 +1,6 @@
-import { outpostInfluence } from "./outpost";
-import { useEffect, useRef } from "react";
+import { troopTypes, troopNames } from "./combat";
+import { outpostInfluence, deploymentError } from "./outpost";
+import { useEffect, useRef, useState } from "react";
 import { Application, Container, Graphics, Text } from "pixi.js";
 import { useTactics } from "./state";
 import { R, DX, route, squadPosition, adjacent } from "./model";
@@ -124,7 +125,13 @@ function soldiers(
   });
 }
 export default function Board() {
-  const ref = useRef<HTMLDivElement>(null);
+  const ref = useRef<HTMLDivElement>(null),
+    menuRef = useRef<HTMLDivElement>(null);
+  const game = useTactics();
+  const [pickerOpen, setPickerOpen] = useState(false);
+  useEffect(() => {
+    if (game.deployCell === null) setPickerOpen(false);
+  }, [game.deployCell]);
   useEffect(() => {
     let dead = false;
     const app = new Application();
@@ -521,10 +528,28 @@ export default function Board() {
           s.rotate(Math.atan2(p.y - at.y, p.x - at.x));
         } else if (moved && down.unit && id >= 0) s.move(id);
         else if (!moved) {
-          if (u) s.select(u.id);
-          else if (s.selected && id >= 0) s.move(id);
-          else if (b.outpost && id === b.outpost.fort) {
-            useTactics.setState({ selected: null, selectedBase: "ally" });
+          const plusCell =
+            b.outpost && Object.values(b.outpost.reserve).some((n) => n > 0)
+              ? b.cells.find(
+                  (c) =>
+                    !deploymentError(b, c.id) &&
+                    Math.hypot(p.x - (c.x + 24), p.y - (c.y - 23)) < 10,
+                )
+              : undefined;
+          if (plusCell) {
+            useTactics.setState({ deployCell: plusCell.id });
+            setPickerOpen(true);
+          } else if (u) {
+            s.select(u.id);
+            if (b.outpost && !deploymentError(b, u.cell))
+              useTactics.setState({ deployCell: u.cell });
+          } else if (s.selected && id >= 0) s.move(id);
+          else if (b.outpost && id >= 0 && !deploymentError(b, id)) {
+            useTactics.setState({ deployCell: id, selected: null });
+          } else if (b.outpost && id === b.outpost.fort) {
+            const candidate = adjacent(id).find((n) => !deploymentError(b, n));
+            if (candidate !== undefined)
+              useTactics.setState({ deployCell: candidate, selected: null });
           } else if (
             b.bases &&
             b.sectors?.some(
@@ -597,6 +622,18 @@ export default function Board() {
         transform();
         const s = useTactics.getState();
         overlay.clear();
+        if (menuRef.current && s.deployCell !== null) {
+          const c = b.cells[s.deployCell],
+            x = c.x * world.scale.x + pan.x,
+            y = c.y * world.scale.y + pan.y;
+          menuRef.current.style.left = `${Math.max(8, Math.min(app.screen.width - 195, x + 24 * world.scale.x))}px`;
+          menuRef.current.style.top = `${Math.max(80, Math.min(app.screen.height - 210, y - 23 * world.scale.y))}px`;
+          menuRef.current.style.visibility =
+            x < 0 || x > app.screen.width || y < 0 || y > app.screen.height
+              ? "hidden"
+              : "visible";
+        }
+
         if (
           b.sectors &&
           (!b.lesson || b.lesson.index >= 3) &&
@@ -796,6 +833,22 @@ export default function Board() {
           }
         }
         if (b.outpost) {
+          if (Object.values(b.outpost.reserve).some((n) => n > 0))
+            for (const c of b.cells) {
+              if (deploymentError(b, c.id)) continue;
+              const x = c.x + 24,
+                y = c.y - 23;
+              overlay
+                .circle(x, y, 8)
+                .fill({ color: 0xf5f3ec, alpha: 0.9 })
+                .stroke({ color: BLUE, width: 1, alpha: 0.5 });
+              overlay
+                .moveTo(x - 3, y)
+                .lineTo(x + 3, y)
+                .moveTo(x, y - 3)
+                .lineTo(x, y + 3)
+                .stroke({ color: BLUE, width: 1 });
+            }
           territory.clear();
           const control = outpostInfluence(b);
           for (const [id, amount] of control) {
@@ -1038,10 +1091,62 @@ export default function Board() {
     };
   }, []);
   return (
-    <div
-      ref={ref}
-      className="tactical-canvas"
-      aria-label="Tablero táctico de Valle Claro"
-    />
+    <>
+      <div
+        ref={ref}
+        className="tactical-canvas"
+        aria-label="Tablero táctico de Valle Claro"
+      />
+      {game.battle.outpost && game.deployCell !== null && (
+        <div
+          ref={menuRef}
+          className="map-recruit"
+          aria-label="Añadir tropas en esta celda"
+        >
+          {!pickerOpen ? (
+            <button
+              className="map-plus"
+              aria-label="Añadir tropa aquí"
+              onClick={() => setPickerOpen(true)}
+            >
+              +
+            </button>
+          ) : (
+            <>
+              <div className="map-recruit-heading">
+                <span>
+                  {game.battle.squads.find((u) => u.cell === game.deployCell)
+                    ?.members.length ?? 0}
+                  /6
+                </span>
+                <button
+                  aria-label="Cerrar tropas disponibles"
+                  onClick={() => useTactics.setState({ deployCell: null })}
+                >
+                  ×
+                </button>
+              </div>
+              {troopTypes.map((type) => (
+                <button
+                  key={type}
+                  aria-label={`Añadir ${troopNames[type]}`}
+                  disabled={
+                    game.battle.outpost!.reserve[type] === 0 ||
+                    !!deploymentError(game.battle, game.deployCell!)
+                  }
+                  onClick={() => game.placeTroop(type)}
+                >
+                  <i className={`reserve-icon ${type}`}>
+                    {type === "shield" ? "♜" : type === "bow" ? "⌁" : "♞"}
+                  </i>
+                  <span>{troopNames[type]}</span>
+                  <b>{game.battle.outpost!.reserve[type]}</b>
+                </button>
+              ))}
+            </>
+          )}
+        </div>
+      )}
+    </>
   );
 }

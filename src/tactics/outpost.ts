@@ -1,3 +1,4 @@
+import type { TroopType } from "./combat";
 import { createBattle, adjacent, blocked, route } from "./model";
 import type { Battle, Squad } from "./model";
 const cell = (q: number, r: number) => r * 18 + q;
@@ -15,47 +16,91 @@ export function createOutpost(): Battle {
       active: false,
     })),
     nextRaid: Infinity,
-    nextReinforcement: Infinity,
+    nextReinforcement: 25,
     serial: 0,
     waves: 0,
     noticeUntil: 0,
     notice: "",
     recruitAt: 0,
+    reserve: { shield: 1, bow: 0, horse: 0 },
+    arrivals: 0,
   };
   for (const s of b.outpost.sites) b.cells[s.cell].terrain = "plain";
   for (let q = 3; q < 18; q++) b.cells[cell(q, 8)].terrain = "plain";
   return b;
 }
-export function createScout(b: Battle, automatic = false): string | null {
-  const o = b.outpost!;
-  if (b.squads.length >= 5) return "Ya tienes cinco escuadrones";
-  if (!automatic && b.time < o.recruitAt) return "Preparando otro escuadrón";
-  const id = adjacent(o.fort).find((id) => !blocked(b, id, "recruit"));
-  if (id === undefined) return "Despeja el cuartel";
-  o.serial++;
-  const unit: Squad = {
-    id: `p${o.serial}`,
-    name: `Escuadrón ${o.serial}`,
-    cell: id,
-    facing: 0,
-    targetFacing: 0,
-    members: ["shield"],
-    path: [],
-    progress: 0,
-    hold: true,
-    cohesion: 100,
-  };
-  b.squads.push(unit);
-  o.recruitAt = b.time + 25;
-  if (automatic) {
-    const target = adjacent(id).find(
-      (n) => b.cells[n].q > b.cells[id].q && !blocked(b, n, unit.id),
-    );
-    if (target !== undefined) unit.path = route(b, unit, target);
-    o.notice = "Llegan refuerzos al cuartel";
-    o.noticeUntil = b.time + 5;
-  }
+export function deploymentError(b: Battle, id: number): string | null {
+  const o = b.outpost,
+    c = b.cells[id];
+  if (!o || !c || c.terrain === "rock") return "Celda inaccesible";
+  const anchors = [
+    o.fort,
+    ...o.sites.filter((s) => s.active).map((s) => s.cell),
+  ];
+  if (!anchors.some((base) => id === base || adjacent(base).includes(id)))
+    return "Despliega junto al cuartel o una torre asegurada";
+  if (id === o.fort) return "Elige una celda junto al cuartel";
+  const unit = b.squads.find((u) => u.cell === id);
+  if (
+    unit &&
+    (unit.path.length || unit.progress || unit.engaged || unit.routing)
+  )
+    return "La tropa debe estar detenida y fuera de combate";
+  if (unit && unit.members.length >= 6) return "Escuadrón completo";
+  if (!unit && b.squads.length >= 5) return "Máximo de cinco escuadrones";
+  if (blocked(b, id, unit?.id ?? "reserve")) return "Celda ocupada o reservada";
+  if (
+    b.raid &&
+    b.raid.phase !== "gone" &&
+    Math.hypot(
+      b.cells[b.raid.troop.cell].x - c.x,
+      b.cells[b.raid.troop.cell].y - c.y,
+    ) < 130
+  )
+    return "Posición bajo amenaza";
   return null;
+}
+export function addReserveTroop(
+  b: Battle,
+  id: number,
+  type: TroopType,
+): string | null {
+  const error = deploymentError(b, id);
+  if (error) return error;
+  const o = b.outpost!;
+  if (o.reserve[type] <= 0) return "No quedan tropas de ese tipo en reserva";
+  let unit = b.squads.find((u) => u.cell === id);
+  if (!unit) {
+    o.serial++;
+    unit = {
+      id: `p${o.serial}`,
+      name: `Escuadrón ${o.serial}`,
+      cell: id,
+      facing: 0,
+      targetFacing: 0,
+      members: [],
+      path: [],
+      progress: 0,
+      hold: true,
+      cohesion: 100,
+    };
+    b.squads.push(unit);
+  }
+  unit.members.push(type);
+  unit.members.sort(
+    (a, c) =>
+      ["shield", "horse", "bow"].indexOf(a) -
+      ["shield", "horse", "bow"].indexOf(c),
+  );
+  o.reserve[type]--;
+  return null;
+}
+// Convenience used by simulation tests; the live UI chooses the target cell.
+export function createScout(b: Battle): string | null {
+  const id = adjacent(b.outpost!.fort).find((id) => !deploymentError(b, id));
+  return id === undefined
+    ? "Despeja el cuartel"
+    : addReserveTroop(b, id, "shield");
 }
 export function updateOutpost(b: Battle, dt: number) {
   const o = b.outpost;
@@ -99,9 +144,18 @@ export function updateOutpost(b: Battle, dt: number) {
     o.nextRaid = b.time + 28;
     b.raid = undefined;
   }
-  if (b.time >= o.nextReinforcement && b.squads.length < 5) {
-    const error = createScout(b, true);
-    o.nextReinforcement = b.time + (error ? 2 : 30);
+  if (b.time >= o.nextReinforcement) {
+    const total = Object.values(o.reserve).reduce((a, c) => a + c, 0);
+    if (total < 12) {
+      const type: TroopType = (["shield", "bow", "horse"] as const)[
+        o.arrivals % 3
+      ];
+      o.reserve[type]++;
+      o.arrivals++;
+      o.notice = "Una nueva tropa está disponible";
+      o.noticeUntil = b.time + 5;
+    }
+    o.nextReinforcement = b.time + 30;
   }
   if (!b.raid && b.time >= o.nextRaid) {
     const targets = o.sites.filter((s) => s.active);

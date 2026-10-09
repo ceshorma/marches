@@ -60,7 +60,8 @@ test("enemy arrives only after construction; periodic reinforcements come from h
   run(b, 40);
   assert.ok(b.raid);
   assert.ok(b.raid!.troop.path.length > 0 || b.raid!.phase === "fight");
-  assert.ok(b.squads.length >= 2);
+  assert.equal(b.squads.length, 1);
+  assert.ok(Object.values(b.outpost!.reserve).reduce((a, c) => a + c, 0) >= 2);
 });
 test("defending the tower repels a patrol and the same world continues", () => {
   const b = built();
