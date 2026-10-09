@@ -58,6 +58,16 @@ export type Front = {
   rethink: number;
 };
 export type Battle = {
+  lesson?: {
+    index: number;
+    status: "active" | "won" | "lost";
+    progress: number;
+    target: number;
+    nextArrival?: number;
+    arrivals?: number;
+    deployed?: boolean;
+    noticeUntil?: number;
+  };
   cells: Cell[];
   squads: Squad[];
   time: number;

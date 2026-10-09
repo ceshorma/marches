@@ -1,3 +1,10 @@
+import {
+  createMission,
+  updateMission,
+  readProgress,
+  saveProgress,
+  missions,
+} from "./campaign";
 import type { TroopType } from "./combat";
 import { createFrontsBattle, spawnReinforcement } from "./fronts";
 import { create } from "zustand";
@@ -22,12 +29,33 @@ type State = {
   tick: (dt: number) => void;
 
   reset: () => void;
-  scenario: "fronts" | "village";
+  scenario: "fronts" | "village" | "campaign";
+  missionIndex: number;
+  unlocked: number;
+  startMission: (index: number) => void;
+  nextMission: () => void;
   switchScenario: () => void;
 };
 export const useTactics = create<State>((set, get) => ({
-  battle: createFrontsBattle(),
-  scenario: "fronts",
+  battle: createMission(readProgress()),
+  scenario: "campaign",
+  missionIndex: readProgress(),
+  unlocked: readProgress(),
+  startMission: (index) => {
+    if (index < 0 || index > get().unlocked || index >= missions.length) return;
+    set({ scenario: "campaign", missionIndex: index });
+    get().reset();
+  },
+  nextMission: () => {
+    const s = get();
+    if (s.battle.lesson?.status !== "won") return;
+    if (s.missionIndex < missions.length - 1)
+      s.startMission(s.missionIndex + 1);
+    else {
+      set({ scenario: "fronts" });
+      get().reset();
+    }
+  },
   revision: 0,
   selected: null,
   selectedBase: null,
@@ -42,6 +70,7 @@ export const useTactics = create<State>((set, get) => ({
   deploy: (type = "shield") => {
     const s = get();
     const message = spawnReinforcement(s.battle, false, type);
+    if (!message && s.battle.lesson) s.battle.lesson.deployed = true;
     set({ message, revision: s.revision + 1 });
   },
   move: (cell) => {
@@ -72,20 +101,35 @@ export const useTactics = create<State>((set, get) => ({
   },
   tick: (dt) => {
     const s = get();
-    if (!s.paused) {
+    if (
+      !s.paused &&
+      (!s.battle.lesson || s.battle.lesson.status === "active")
+    ) {
       advance(s.battle, dt);
+      updateMission(s.battle, dt);
+      if (s.battle.lesson?.status === "won") {
+        const unlocked = Math.max(s.unlocked, Math.min(4, s.missionIndex + 1));
+        saveProgress(unlocked);
+        set({ unlocked, paused: true, selected: null, selectedBase: null });
+      }
+      if (s.battle.lesson?.status === "lost")
+        set({ paused: true, selected: null, selectedBase: null });
       set({ revision: s.revision + 1 });
     }
   },
   switchScenario: () => {
-    const scenario = get().scenario === "fronts" ? "village" : "fronts";
+    const scenario = get().scenario === "fronts" ? "campaign" : "fronts";
     set({ scenario });
     get().reset();
   },
   reset: () =>
     set({
       battle:
-        get().scenario === "fronts" ? createFrontsBattle() : createBattle(true),
+        get().scenario === "fronts"
+          ? createFrontsBattle()
+          : get().scenario === "campaign"
+            ? createMission(get().missionIndex)
+            : createBattle(true),
       selected: null,
       selectedBase: null,
       paused: false,

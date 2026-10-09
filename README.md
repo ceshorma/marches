@@ -1,8 +1,24 @@
-# MARCHES · Tres frentes
+# MARCHES · Primera campaña
 
 Prototipo de apertura: protege una aldea aliada de una patrulla visible en un tablero cenital de 18 × 12 hexágonos. React, TypeScript, PixiJS, Zustand y Vite; sin backend ni recursos gráficos externos.
 
-## Escenario avanzado (inicio por defecto)
+## Campaña inicial (inicio por defecto)
+
+Cinco misiones con objetivo y cierre propios:
+
+1. **La primera orden:** una tropa, un puesto marcado. Llegar y mantenerlo tres segundos.
+2. **La primera incursión:** interceptar una patrulla y conservar suministros en la aldea.
+3. **La tropa adecuada:** tres composiciones y arqueros enemigos. Elegir el contraataque.
+4. **Los refuerzos:** desplegar desde el cuartel y conquistar el paso.
+5. **Los tres frentes:** sostener territorio y capturar el cuartel enemigo.
+
+Las primeras tres reciben pequeños grupos de refuerzo desde retaguardia: a los 12 segundos en la primera, y a los 18 y 43 segundos en las siguientes. Avanzan a un punto cercano de reunión; requieren órdenes para actuar. Las misiones posteriores usan los tiempos de preparación del cuartel y las columnas rivales. Las llegadas están limitadas para mantener legibilidad.
+
+Victoria y derrota detienen la misión y permiten avanzar o reintentar. Los números permiten repetir misiones desbloqueadas. Se guarda **el desbloqueo** en localStorage, no la posición de cada tropa: al recargar se inicia la misión desbloqueada más reciente. El juego funciona también si el navegador bloquea ese almacenamiento.
+
+Los controles de tipos/daño aparecen desde la tercera misión y el control territorial desde la cuarta. «Juego libre» abre el escenario avanzado; «Campaña» regresa al aprendizaje. `src/tactics/campaign.ts` contiene los objetivos, llegadas y condiciones de transición.
+
+## Escenario avanzado
 
 Una situación ya en marcha, con siete escuadrones aliados, seis rivales y cinco sectores. El reloj empieza en 04:00 para representar ese estado preparado. Hay dos órdenes aliadas iniciales; puedes reemplazarlas y movilizar las reservas.
 

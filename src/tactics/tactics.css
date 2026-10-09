@@ -521,3 +521,83 @@ button:focus-visible {
     white-space: normal;
   }
 }
+.campaign-steps {
+  position: absolute;
+  right: 28px;
+  top: 115px;
+  display: flex;
+  gap: 5px;
+}
+.campaign-steps button {
+  min-width: 28px;
+  min-height: 28px;
+  border: 1px solid #c6cec2;
+  background: #f5f3eceb;
+  font-size: 10px;
+  border-radius: 50%;
+}
+.mission-result {
+  position: absolute;
+  left: 50%;
+  bottom: 115px;
+  transform: translateX(-50%);
+  background: #f8f6eff5;
+  padding: 20px 26px;
+  border: 1px solid #aabdaf;
+  border-radius: 7px;
+  text-align: center;
+  box-shadow: 0 6px 24px #34475012;
+}
+.mission-result strong {
+  font: 19px Georgia;
+  display: block;
+  margin-bottom: 12px;
+}
+.mission-result button {
+  background: #397cac;
+  color: #fff;
+  padding: 8px 16px;
+  margin: auto;
+  font-size: 12px;
+}
+.region {
+  max-width: 48%;
+}
+.region > span {
+  letter-spacing: 0.4px;
+  line-height: 1.5;
+}
+.base-countdown {
+  font-size: 11px;
+}
+@media (max-width: 700px) {
+  .campaign-steps {
+    top: 142px;
+    right: 12px;
+    gap: 3px;
+  }
+  .campaign-steps button {
+    min-width: 24px;
+    min-height: 24px;
+  }
+  .region {
+    max-width: none;
+    padding: 0 12px;
+  }
+  .region > span {
+    max-width: 90%;
+    margin-left: auto;
+    margin-right: auto;
+  }
+  .mission-result {
+    width: 85%;
+    bottom: 105px;
+  }
+  .brand span {
+    max-width: 190px;
+    line-height: 1.5;
+  }
+  .brand {
+    font-size: 17px;
+  }
+}

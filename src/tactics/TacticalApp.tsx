@@ -1,3 +1,4 @@
+import { missions } from "./campaign";
 import { composition, matchup, troopTypes, troopNames } from "./combat";
 import type { TroopType } from "./combat";
 import { useEffect, useState } from "react";
@@ -21,6 +22,8 @@ export default function TacticalApp() {
     [generation, setGeneration] = useState(0),
     [help, setHelp] = useState(false),
     [recruitType, setRecruitType] = useState<TroopType>("shield");
+  const lesson = s.battle.lesson,
+    mission = lesson ? missions[lesson.index] : null;
   const unit = s.battle.squads.find((u) => u.id === s.selected);
   useEffect(() => {
     let last = performance.now(),
@@ -69,38 +72,52 @@ export default function TacticalApp() {
   }, [s.message]);
   return (
     <main className="tactical-game">
-      <Board key={generation} />
+      <Board key={`${generation}-${s.scenario}-${s.missionIndex}`} />
       <header className="tactical-header">
         <div className="brand">
           MARCHES
           <span>
-            {s.scenario === "fronts" ? "ESCENARIO AVANZADO" : "VALLE CLARO"}
+            {mission
+              ? `${s.missionIndex + 1} / 5 · ${mission.name.toUpperCase()}`
+              : s.scenario === "fronts"
+                ? "ESCENARIO AVANZADO"
+                : "VALLE CLARO"}
           </span>
         </div>
         <div className="region">
-          {s.scenario === "fronts"
-            ? s.battle.sectors?.[4].owner === "ally"
-              ? "REFUERZOS RIVALES CORTADOS"
-              : s.battle.sectors?.[0].owner === "enemy"
-                ? "RECUPERA TU CUARTEL"
-                : "CORTA LOS REFUERZOS RIVALES"
-            : s.battle.raid?.outcome === "protected"
-              ? "ALDEA PROTEGIDA"
-              : s.battle.raid?.outcome === "raided"
-                ? "ALDEA SAQUEADA"
-                : "PROTEGE LA ALDEA"}
-          <span>
-            {s.scenario === "fronts"
-              ? `${s.battle.sectors?.filter((s) => s.owner === "ally").length} / 5 sectores · ${s.battle.squads.length} escuadrones`
+          {mission
+            ? lesson?.status === "won"
+              ? mission.success.toUpperCase()
+              : lesson?.status === "lost"
+                ? "REAGRUPA TUS FUERZAS"
+                : mission.objective
+            : s.scenario === "fronts"
+              ? s.battle.sectors?.[4].owner === "ally"
+                ? "REFUERZOS RIVALES CORTADOS"
+                : s.battle.sectors?.[0].owner === "enemy"
+                  ? "RECUPERA TU CUARTEL"
+                  : "CORTA LOS REFUERZOS RIVALES"
               : s.battle.raid?.outcome === "protected"
-                ? "La patrulla se retira"
+                ? "ALDEA PROTEGIDA"
                 : s.battle.raid?.outcome === "raided"
-                  ? "Reinicia para intentarlo de nuevo"
-                  : s.battle.raid?.phase === "loot"
-                    ? "Están tomando los suministros"
-                    : s.battle.raid?.phase === "fight"
-                      ? "Combate · sostén la posición"
-                      : "Una patrulla se aproxima"}
+                  ? "ALDEA SAQUEADA"
+                  : "PROTEGE LA ALDEA"}
+          <span>
+            {mission
+              ? lesson?.noticeUntil && s.battle.time < lesson.noticeUntil
+                ? "Han llegado refuerzos"
+                : mission.hint
+              : s.scenario === "fronts"
+                ? `${s.battle.sectors?.filter((s) => s.owner === "ally").length} / 5 sectores · ${s.battle.squads.length} escuadrones`
+                : s.battle.raid?.outcome === "protected"
+                  ? "La patrulla se retira"
+                  : s.battle.raid?.outcome === "raided"
+                    ? "Reinicia para intentarlo de nuevo"
+                    : s.battle.raid?.phase === "loot"
+                      ? "Están tomando los suministros"
+                      : s.battle.raid?.phase === "fight"
+                        ? "Combate · sostén la posición"
+                        : "Una patrulla se aproxima"}
           </span>
         </div>
         <div className="clock">
@@ -135,7 +152,7 @@ export default function TacticalApp() {
         N<span>↑</span>
       </div>
       <div
-        className={`squad-list ${s.scenario === "fronts" ? "expanded" : ""}`}
+        className={`squad-list ${s.battle.squads.length > 3 ? "expanded" : ""}`}
       >
         {s.battle.squads.map((u, i) => (
           <button
@@ -164,47 +181,52 @@ export default function TacticalApp() {
             )}
             <span>{composition(unit)}</span>
           </div>
-          <div className="matchups" aria-label="Afinidades de daño a cohesión">
-            <small>Daño a cohesión</small>
-            <div className="matchup-head">
-              <span>Contra</span>
-              <span>Inflige</span>
-              <span>Recibe</span>
-            </div>
-            {troopTypes.map((t) => {
-              const outgoing = matchup(unit.members, [t]),
-                incoming = matchup([t], unit.members);
-              return (
-                <div key={t} className="matchup-row">
-                  <span>{troopNames[t]}</span>
-                  <b
-                    className={
-                      outgoing > 1
-                        ? "favorable"
-                        : outgoing < 1
-                          ? "unfavorable"
-                          : ""
-                    }
-                  >
-                    {Math.round((outgoing - 1) * 100) > 0 ? "+" : ""}
-                    {Math.round((outgoing - 1) * 100)}%
-                  </b>
-                  <b
-                    className={
-                      incoming > 1
-                        ? "unfavorable"
-                        : incoming < 1
+          {(!lesson || lesson.index >= 2) && (
+            <div
+              className="matchups"
+              aria-label="Afinidades de daño a cohesión"
+            >
+              <small>Daño a cohesión</small>
+              <div className="matchup-head">
+                <span>Contra</span>
+                <span>Inflige</span>
+                <span>Recibe</span>
+              </div>
+              {troopTypes.map((t) => {
+                const outgoing = matchup(unit.members, [t]),
+                  incoming = matchup([t], unit.members);
+                return (
+                  <div key={t} className="matchup-row">
+                    <span>{troopNames[t]}</span>
+                    <b
+                      className={
+                        outgoing > 1
                           ? "favorable"
-                          : ""
-                    }
-                  >
-                    {Math.round((incoming - 1) * 100) > 0 ? "+" : ""}
-                    {Math.round((incoming - 1) * 100)}%
-                  </b>
-                </div>
-              );
-            })}
-          </div>
+                          : outgoing < 1
+                            ? "unfavorable"
+                            : ""
+                      }
+                    >
+                      {Math.round((outgoing - 1) * 100) > 0 ? "+" : ""}
+                      {Math.round((outgoing - 1) * 100)}%
+                    </b>
+                    <b
+                      className={
+                        incoming > 1
+                          ? "unfavorable"
+                          : incoming < 1
+                            ? "favorable"
+                            : ""
+                      }
+                    >
+                      {Math.round((incoming - 1) * 100) > 0 ? "+" : ""}
+                      {Math.round((incoming - 1) * 100)}%
+                    </b>
+                  </div>
+                );
+              })}
+            </div>
+          )}
           <div
             className="mini-formation"
             aria-label="Formación orientada hacia la derecha"
@@ -217,52 +239,61 @@ export default function TacticalApp() {
               />
             ))}
           </div>
-          <button
-            disabled={unit.routing}
-            aria-label="Orientar escuadrón"
-            title="Orientar · R"
-            className={s.orienting ? "chosen" : ""}
-            onClick={() => useTactics.setState({ orienting: !s.orienting })}
-          >
-            <RotateCw size={20} />
-            <span>Orientar</span>
-          </button>
-          <button
-            disabled={unit.routing}
-            aria-label="Mantener posición"
-            className={unit.hold ? "chosen" : ""}
-            onClick={() => s.stop()}
-          >
-            <Shield size={20} />
-            <span>Mantener</span>
-          </button>
+          {(!lesson || lesson.index >= 1) && (
+            <>
+              <button
+                disabled={unit.routing}
+                aria-label="Orientar escuadrón"
+                title="Orientar · R"
+                className={s.orienting ? "chosen" : ""}
+                onClick={() => useTactics.setState({ orienting: !s.orienting })}
+              >
+                <RotateCw size={20} />
+                <span>Orientar</span>
+              </button>
+              <button
+                disabled={unit.routing}
+                aria-label="Mantener posición"
+                className={unit.hold ? "chosen" : ""}
+                onClick={() => s.stop()}
+              >
+                <Shield size={20} />
+                <span>Mantener</span>
+              </button>
+            </>
+          )}
           <button aria-label="Cerrar selección" onClick={() => s.select(null)}>
             <X size={17} />
           </button>
         </section>
       ) : (
         <div className="quiet-hint">
-          {s.scenario === "fronts"
+          {lesson
             ? ""
-            : "Selecciona una tropa · intercepta la patrulla"}
+            : s.scenario === "fronts"
+              ? ""
+              : "Selecciona una tropa · intercepta la patrulla"}
         </div>
       )}
-      {s.battle.sectors && !unit && !s.selectedBase && (
-        <div className="sector-strip" aria-label="Control de sectores">
-          {s.battle.sectors.map((sector) => (
-            <div
-              key={sector.id}
-              title={`${sector.name}: ${sector.owner === "ally" ? "aliado" : sector.owner === "enemy" ? "enemigo" : "neutral"}`}
-            >
-              <span className={`sector-dot ${sector.owner}`} />
-              <span>{sector.name}</span>
-              <div className="sector-meter">
-                <i style={{ width: `${(sector.control + 1) * 50}%` }} />
+      {s.battle.sectors &&
+        (!lesson || lesson.index >= 3) &&
+        !unit &&
+        !s.selectedBase && (
+          <div className="sector-strip" aria-label="Control de sectores">
+            {s.battle.sectors.map((sector) => (
+              <div
+                key={sector.id}
+                title={`${sector.name}: ${sector.owner === "ally" ? "aliado" : sector.owner === "enemy" ? "enemigo" : "neutral"}`}
+              >
+                <span className={`sector-dot ${sector.owner}`} />
+                <span>{sector.name}</span>
+                <div className="sector-meter">
+                  <i style={{ width: `${(sector.control + 1) * 50}%` }} />
+                </div>
               </div>
-            </div>
-          ))}
-        </div>
-      )}
+            ))}
+          </div>
+        )}
       {s.selectedBase && s.battle.bases && (
         <section className="orders base-orders" aria-label="Cuartel">
           <div className="unit-title">
@@ -326,6 +357,50 @@ export default function TacticalApp() {
           </button>
         </section>
       )}
+      {lesson && lesson.status !== "active" && (
+        <section className="mission-result" aria-label="Resultado de misión">
+          <strong>
+            {lesson.status === "won"
+              ? mission!.success
+              : lesson.index === 4
+                ? "El cuartel ha caído"
+                : "La aldea necesita otra oportunidad"}
+          </strong>
+          <button
+            onClick={() => {
+              if (lesson.status === "won") s.nextMission();
+              else s.reset();
+              setGeneration((g) => g + 1);
+            }}
+          >
+            {lesson.status === "lost"
+              ? "Reintentar"
+              : lesson.index === 4
+                ? "Jugar libremente"
+                : "Siguiente misión"}{" "}
+            →
+          </button>
+        </section>
+      )}
+      {lesson && (
+        <nav className="campaign-steps" aria-label="Misiones">
+          {missions.map((m, i) => (
+            <button
+              key={m.name}
+              disabled={i > s.unlocked}
+              aria-label={`Misión ${i + 1}: ${m.name}`}
+              title={m.name}
+              className={i === lesson.index ? "chosen" : ""}
+              onClick={() => {
+                s.startMission(i);
+                setGeneration((g) => g + 1);
+              }}
+            >
+              {i + 1}
+            </button>
+          ))}
+        </nav>
+      )}
       {s.orienting && (
         <div className="orientation-hint">
           Señala hacia dónde mirar <span>Esc para cancelar</span>
@@ -356,7 +431,7 @@ export default function TacticalApp() {
         </button>
       </div>
       <div className="utility">
-        {s.scenario === "fronts" && (
+        {s.battle.bases && (
           <button
             aria-label="Abrir cuartel aliado"
             onClick={() =>
@@ -374,7 +449,7 @@ export default function TacticalApp() {
             setGeneration((g) => g + 1);
           }}
         >
-          {s.scenario === "fronts" ? "Ver inicio" : "Tres frentes"}
+          {s.scenario === "fronts" ? "Campaña" : "Juego libre"}
         </button>
         <button
           aria-label="Mostrar controles"

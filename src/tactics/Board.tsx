@@ -293,7 +293,15 @@ export default function Board() {
           .bezierCurveTo(580, 690, 700, 460, b.cells[158].x, b.cells[158].y)
           .stroke({ color: 0xc9b18a, alpha: 0.5, width: 9 });
       }
-      for (const c of b.cells.filter((c) => c.place)) {
+      for (const c of b.cells.filter(
+        (c) =>
+          c.place &&
+          (!b.lesson ||
+            b.lesson.index < 2 ||
+            b.lesson.index >= 4 ||
+            c.id === b.lesson.target ||
+            (b.lesson.index === 3 && c.id === b.sectors![0].cell)),
+      )) {
         const g = new Graphics();
         base.addChild(g);
         if (c.place === "fort") {
@@ -389,12 +397,39 @@ export default function Board() {
         ) {
           lastW = app.screen.width;
           lastH = app.screen.height;
-          fit = b.fronts
-            ? Math.min((lastW - 50) / (DX * 18), (lastH - 170) / (R * 18))
-            : Math.min((lastW - 55) / (DX * 8), (lastH - 190) / (R * 12));
+          fit =
+            b.lesson?.index === 0
+              ? Math.min((lastW - 60) / (DX * 8), (lastH - 230) / (R * 9))
+              : b.lesson && (b.lesson.index === 2 || b.lesson.index === 3)
+                ? Math.min((lastW - 60) / (DX * 12), (lastH - 230) / (R * 12))
+                : b.fronts
+                  ? Math.min((lastW - 50) / (DX * 18), (lastH - 170) / (R * 18))
+                  : Math.min((lastW - 55) / (DX * 8), (lastH - 190) / (R * 12));
           pan = {
-            x: lastW / 2 - DX * (b.fronts ? 8.75 : 14.5) * fit * s.zoom,
-            y: lastH / 2 - R * (b.fronts ? 8.2 : 9.2) * fit * s.zoom,
+            x:
+              lastW / 2 -
+              DX *
+                (b.lesson?.index === 0
+                  ? 5
+                  : b.lesson && (b.lesson.index === 2 || b.lesson.index === 3)
+                    ? 7
+                    : b.fronts
+                      ? 8.75
+                      : 14.5) *
+                fit *
+                s.zoom,
+            y:
+              lastH / 2 -
+              R *
+                (b.lesson?.index === 0
+                  ? 12
+                  : b.lesson && (b.lesson.index === 2 || b.lesson.index === 3)
+                    ? 9
+                    : b.fronts
+                      ? 8.2
+                      : 9.2) *
+                fit *
+                s.zoom,
           };
           lastFocus = s.focus;
           lastZoom = s.zoom;
@@ -547,7 +582,11 @@ export default function Board() {
         transform();
         const s = useTactics.getState();
         overlay.clear();
-        if (b.sectors && Math.floor(b.time * 2) !== lastTerritory) {
+        if (
+          b.sectors &&
+          (!b.lesson || b.lesson.index >= 3) &&
+          Math.floor(b.time * 2) !== lastTerritory
+        ) {
           lastTerritory = Math.floor(b.time * 2);
           territory.clear();
           for (const c of b.cells) {
@@ -599,6 +638,7 @@ export default function Board() {
         if (b.sectors) {
           if (b.bases)
             for (const side of ["ally", "enemy"] as const) {
+              if (b.lesson && b.lesson.index < 4 && side === "enemy") continue;
               const sector = b.sectors[side === "ally" ? 0 : 4],
                 c = b.cells[sector.cell],
                 color = side === "ally" ? BLUE : 0xc8615a;
@@ -634,6 +674,7 @@ export default function Board() {
                 }
             }
           for (const sector of b.sectors) {
+            if (b.lesson && b.lesson.index < 3) continue;
             const c = b.cells[sector.cell],
               color =
                 sector.owner === "ally"
@@ -713,6 +754,32 @@ export default function Board() {
                 .stroke({ color: BLUE, alpha: 0.32, width: 1 });
               from = c;
             }
+          }
+        }
+        if (b.lesson) {
+          const c = b.cells[b.lesson.target];
+          overlay
+            .poly(hex(c.x, c.y, R - 2))
+            .stroke({
+              color: BLUE,
+              width: 2,
+              alpha: 0.45 + Math.sin(b.time * 2) * 0.15,
+            });
+          if (b.lesson.index === 0) {
+            overlay
+              .circle(c.x, c.y, R - 7)
+              .stroke({ color: BLUE, alpha: 0.15, width: 3 });
+            if (b.lesson.progress > 0)
+              overlay
+                .moveTo(c.x, c.y - (R - 7))
+                .arc(
+                  c.x,
+                  c.y,
+                  R - 7,
+                  -Math.PI / 2,
+                  -Math.PI / 2 + b.lesson.progress * Math.PI * 2,
+                )
+                .stroke({ color: BLUE, width: 3 });
           }
         }
         const raid = b.raid,
