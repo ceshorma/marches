@@ -142,3 +142,51 @@ test("defenders can interrupt an ongoing raid", () => {
   assert.equal(b.raid!.outcome, "protected");
   assert.ok(b.raid!.supplies > 0 && b.raid!.supplies < 100);
 });
+
+const contact = (two = false) => {
+  const b = createBattle(true);
+  b.raid!.troop.cell = 140;
+  b.raid!.troop.path = [];
+  b.squads[0].cell = 139;
+  if (two) b.squads[1].cell = 158;
+  return b;
+};
+test("contact exchanges attacks and cohesion before retreat", () => {
+  const b = contact();
+  run(b, 3);
+  assert.equal(b.raid!.phase, "fight");
+  assert.ok(b.squads[0].cohesion! < 100);
+  assert.ok(b.raid!.troop.cohesion! < 100);
+  assert.ok(b.raid!.troop.cohesion! > 0);
+  assert.equal(b.raid!.outcome, "active");
+  assert.ok(b.strikes!.some((h) => h.enemy));
+  assert.ok(b.strikes!.some((h) => !h.enemy));
+});
+test("support breaks enemy cohesion sooner", () => {
+  const one = contact(),
+    two = contact(true);
+  run(one, 12);
+  run(two, 12);
+  assert.equal(one.raid!.phase, "fight");
+  assert.equal(two.raid!.phase, "retreat");
+});
+test("withdrawing defenders lets enemy resume its objective", () => {
+  const b = contact();
+  run(b, 3);
+  assert.equal(order(b, "s1", 8 * 18 + 12), null);
+  run(b, 7);
+  assert.notEqual(b.raid!.phase, "fight");
+  assert.equal(b.raid!.outcome, "active");
+  assert.ok(b.raid!.troop.path.length > 0 || b.raid!.phase === "loot");
+});
+test("a broken allied squad retreats and recovers, without permanent casualties", () => {
+  const b = contact();
+  b.squads[0].cohesion = 4;
+  run(b, 0.1);
+  assert.equal(b.squads[0].routing, true);
+  assert.ok(order(b, "s1", 140));
+  run(b, 40);
+  assert.equal(b.squads[0].routing, false);
+  assert.equal(b.squads[0].members.length, 6);
+  assert.ok(b.squads[0].cohesion! >= 60);
+});

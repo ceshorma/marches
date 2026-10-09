@@ -40,7 +40,7 @@ export const useTactics = create<State>((set, get) => ({
   rotate: (angle) => {
     const s = get(),
       u = s.battle.squads.find((u) => u.id === s.selected);
-    if (u) {
+    if (u && !u.routing) {
       hold(u);
       if (u.progress > 0) u.pendingFacing = angle;
       else u.targetFacing = angle;
@@ -50,7 +50,7 @@ export const useTactics = create<State>((set, get) => ({
   stop: () => {
     const s = get(),
       u = s.battle.squads.find((u) => u.id === s.selected);
-    if (u) {
+    if (u && !u.routing) {
       hold(u);
       set({ revision: s.revision + 1 });
     }

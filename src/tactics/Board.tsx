@@ -47,7 +47,11 @@ function soldiers(
     y + a * d + b * c,
   ];
   s.members.forEach((m, i) => {
-    const [px, py] = point(i < 3 ? 10 : -10, ((i % 3) - 1) * 16);
+    const disorder = Math.max(0, 1 - (s.cohesion ?? 100) / 60);
+    const [px, py] = point(
+      (i < 3 ? 10 : -10) + Math.sin(i * 7) * disorder * 6,
+      ((i % 3) - 1) * 16 + Math.cos(i * 4) * disorder * 5,
+    );
     g.ellipse(px + 1, py + 3, 7, 5).fill({
       color: 0x344750,
       alpha: 0.13 * alpha,
@@ -109,6 +113,40 @@ export default function Board() {
       app.stage.addChild(world);
       world.addChild(base, overlay);
       const b = useTactics.getState().battle;
+      const intent = new Text({
+        text: "",
+        style: {
+          fontFamily: "Arial",
+          fontSize: 10,
+          fill: 0x9d514b,
+          letterSpacing: 1,
+        },
+      });
+      intent.anchor.set(0.5);
+      world.addChild(intent);
+      const morale = (u: Squad, x: number, y: number, color: number) => {
+        if (!u.engaged && !u.routing) return;
+        overlay
+          .roundRect(x - 21, y + 31, 42, 4, 2)
+          .fill({ color: 0x706f60, alpha: 0.25 });
+        overlay
+          .roundRect(
+            x - 21,
+            y + 31,
+            Math.max(0.2, (42 * (u.cohesion ?? 100)) / 100),
+            4,
+            2,
+          )
+          .fill((u.cohesion ?? 100) < 30 ? 0xb28a49 : color);
+        if (u.lastHit !== undefined && b.time - u.lastHit < 0.25)
+          overlay
+            .circle(x, y, 29)
+            .stroke({
+              color: 0xe7c381,
+              width: 2,
+              alpha: 1 - (b.time - u.lastHit) / 0.25,
+            });
+      };
       const terrain = new Graphics();
       base.addChild(terrain);
       for (const c of b.cells) {
@@ -486,7 +524,7 @@ export default function Board() {
               p = squadPosition(b, e);
             soldiers(overlay, e, p.x, p.y, e.facing, 1, 0xc15c53);
             let from = p;
-            for (const id of e.path) {
+            for (const id of raid.phase === "fight" ? [] : e.path) {
               const c = b.cells[id],
                 length = Math.hypot(c.x - from.x, c.y - from.y);
               for (let t = 6; t < length; t += 13)
@@ -499,16 +537,42 @@ export default function Board() {
                   .fill({ color: 0xc15c53, alpha: 0.6 });
               from = c;
             }
-            if (raid.pressure > 0 && raid.phase !== "retreat")
-              overlay
-                .arc(
-                  p.x,
-                  p.y,
-                  R - 3,
-                  -Math.PI / 2,
-                  -Math.PI / 2 + raid.pressure * Math.PI * 2,
-                )
-                .stroke({ color: BLUE, width: 3 });
+            morale(e, p.x, p.y, 0xc15c53);
+            intent.visible = true;
+            intent.position.set(p.x, p.y - 48);
+            intent.text =
+              raid.phase === "fight"
+                ? (e.cohesion ?? 100) < 30
+                  ? "CEDE"
+                  : "ATACA"
+                : raid.phase === "retreat"
+                  ? "SE RETIRA"
+                  : raid.phase === "loot"
+                    ? "SAQUEA"
+                    : "AVANZA";
+          }
+        }
+        if (raid?.phase === "gone") intent.visible = false;
+        for (const hit of b.strikes ?? []) {
+          const t = Math.min(1, (b.time - hit.time) / 0.55),
+            dx = hit.tx - hit.x,
+            dy = hit.ty - hit.y,
+            len = Math.hypot(dx, dy) || 1;
+          const x = hit.x + dx * t,
+            y = hit.y + dy * t - Math.sin(t * Math.PI) * 12;
+          if (t < 1)
+            overlay
+              .moveTo(x - (dx / len) * 9, y - (dy / len) * 9)
+              .lineTo(x, y)
+              .stroke({ color: hit.enemy ? 0xb65149 : BLUE, width: 1.8 });
+          else {
+            const a = Math.max(0, 1 - (b.time - hit.time - 0.55) / 0.25);
+            overlay
+              .moveTo(hit.tx - 5, hit.ty - 5)
+              .lineTo(hit.tx + 5, hit.ty + 5)
+              .moveTo(hit.tx + 5, hit.ty - 5)
+              .lineTo(hit.tx - 5, hit.ty + 5)
+              .stroke({ color: 0xb8995f, width: 2, alpha: a });
           }
         }
         const selected = b.squads.find((u) => u.id === s.selected);
@@ -565,6 +629,7 @@ export default function Board() {
         for (const u of b.squads) {
           const p = squadPosition(b, u);
           soldiers(overlay, u, p.x, p.y, u.facing);
+          morale(u, p.x, p.y, BLUE);
           const a = u.facing;
           overlay
             .poly([

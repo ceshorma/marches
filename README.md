@@ -34,7 +34,7 @@ npm run preview
 
 Dos escuadrones con seis integrantes cada uno; composición fija para validar movimiento y orientación. Las rocas bloquean; el bosque y la subida ralentizan. Destinos, celdas ocupadas y siguientes pasos se reservan para impedir solapamientos. Ante un bloqueo dinámico se busca un desvío; si no existe, se espera.
 
-Tres alturas (0, +15, +30), un fuerte, una aldea y una torre. Los edificios son referencias del escenario; no tienen acciones todavía. La partida comienza con «Protege la aldea». Una patrulla avanza, toma suministros si llega sin oposición y se retira cuando la presencia aliada acumula suficiente presión. Puedes interceptarla o interrumpir el saqueo. La bandera azul permanece: una incursión no cambia la propiedad. El resultado distingue aldea protegida y saqueada; reiniciar permite repetir la prueba. Este primer enfrentamiento simplificado aún no incluye bajas, ventajas de flanqueo, reclutamiento, captura ni influencia territorial.
+Tres alturas (0, +15, +30), un fuerte, una aldea y una torre. Los edificios son referencias del escenario; no tienen acciones todavía. La partida comienza con «Protege la aldea». Una patrulla avanza, toma suministros si llega sin oposición y se retira cuando pierde cohesión durante un enfrentamiento. Puedes interceptarla o interrumpir el saqueo. La bandera azul permanece: una incursión no cambia la propiedad. El resultado distingue aldea protegida y saqueada; reiniciar permite repetir la prueba. El contacto inicia ataques cada 1,35 segundos y desgaste de cohesión de ambos bandos. Las flechas y destellos corresponden a esos ataques. Un segundo escuadrón acelera el repliegue rival; retirar a los defensores permite que el enemigo continúe. Los aliados quebrados buscan una celda segura y se recuperan antes de aceptar nuevas órdenes. Este enfrentamiento simplificado aún no incluye bajas permanentes, ventajas de flanqueo, reclutamiento, captura ni influencia territorial.
 
 ## Organización
 
@@ -43,7 +43,7 @@ Tres alturas (0, +15, +30), un fuerte, una aldea y una torre. Los edificios son 
 - `src/tactics/Board.tsx`: render vectorial PixiJS, cámara y gestos.
 - `src/tactics/TacticalApp.tsx`: controles React y reloj de simulación.
 - `src/tactics/tactics.css`: interfaz responsive.
-- `tests/tactics.test.ts`: trece pruebas de reglas del nuevo modelo y la incursión.
+- `tests/tactics.test.ts`: diecisiete pruebas de reglas del nuevo modelo y la incursión.
 
 El prototipo anterior se conserva en `src/App.tsx`, `src/Map.tsx`, `src/world.ts`, `src/store.ts` y `src/simulation.ts`; no se carga en la entrada actual. Su documentación está en `README-legacy.md` y sus doce pruebas siguen ejecutándose.
 

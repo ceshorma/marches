@@ -84,7 +84,9 @@ export default function TacticalApp() {
                 ? "Reinicia para intentarlo de nuevo"
                 : s.battle.raid?.phase === "loot"
                   ? "Están tomando los suministros"
-                  : "Una patrulla se aproxima"}
+                  : s.battle.raid?.phase === "fight"
+                    ? "Combate · sostén la posición"
+                    : "Una patrulla se aproxima"}
           </span>
         </div>
         <div className="clock">
@@ -136,6 +138,12 @@ export default function TacticalApp() {
         <section className="orders" aria-label="Órdenes de escuadrón">
           <div className="unit-title">
             <strong>{unit.name}</strong>
+            {(unit.engaged || unit.routing) && (
+              <span className="cohesion-readout">
+                {unit.routing ? "Reagrupándose" : "Cohesión"} ·{" "}
+                {Math.ceil(unit.cohesion ?? 100)}%
+              </span>
+            )}
             <span>
               {unit.members.filter((m) => m === "shield").length} infantería ·{" "}
               {unit.members.filter((m) => m === "bow").length} arqueros
@@ -154,6 +162,7 @@ export default function TacticalApp() {
             ))}
           </div>
           <button
+            disabled={unit.routing}
             aria-label="Orientar escuadrón"
             title="Orientar · R"
             className={s.orienting ? "chosen" : ""}
@@ -163,6 +172,7 @@ export default function TacticalApp() {
             <span>Orientar</span>
           </button>
           <button
+            disabled={unit.routing}
             aria-label="Mantener posición"
             className={unit.hold ? "chosen" : ""}
             onClick={() => s.stop()}

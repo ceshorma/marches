@@ -23,10 +23,16 @@ export type Squad = {
   progress: number;
   hold: boolean;
   pendingFacing?: number;
+  cohesion?: number;
+  engaged?: string;
+  cooldown?: number;
+  routing?: boolean;
+  disengaging?: boolean;
+  lastHit?: number;
 };
 export type Raid = {
   troop: Squad;
-  phase: "approach" | "loot" | "retreat" | "gone";
+  phase: "approach" | "fight" | "loot" | "retreat" | "gone";
   pressure: number;
   supplies: number;
   stolen: number;
@@ -38,6 +44,14 @@ export type Battle = {
   squads: Squad[];
   time: number;
   raid?: Raid;
+  strikes?: {
+    x: number;
+    y: number;
+    tx: number;
+    ty: number;
+    time: number;
+    enemy: boolean;
+  }[];
 };
 export const allTroops = (b: Battle) => [
   ...b.squads,
@@ -192,6 +206,7 @@ export function route(b: Battle, s: Squad, end: number): number[] {
 export function order(b: Battle, id: string, end: number): string | null {
   const s = b.squads.find((s) => s.id === id);
   if (!s) return "Selecciona un escuadrón";
+  if (s.routing) return "El escuadrón se está reagrupando";
   if (end === s.cell && !s.progress) {
     s.path = [];
     s.hold = true;
@@ -200,6 +215,7 @@ export function order(b: Battle, id: string, end: number): string | null {
   const p = route(b, s, end);
   if (!p.length) return "Destino bloqueado o sin acceso";
   s.path = s.progress > 0 ? [s.path[0], ...p] : p;
+  s.disengaging = !!s.engaged;
   s.pendingFacing = undefined;
   s.hold = false;
   return null;
@@ -215,6 +231,7 @@ export function advance(b: Battle, dt: number) {
     let delta =
       ((s.targetFacing - s.facing + Math.PI * 3) % (Math.PI * 2)) - Math.PI;
     s.facing += Math.sign(delta) * Math.min(Math.abs(delta), dt * 2.5);
+    if (s.engaged && !s.disengaging && !s.routing) continue;
     if (!s.path.length) continue;
     const next = s.path[0];
     if (
@@ -242,6 +259,7 @@ export function advance(b: Battle, dt: number) {
       s.cell = next;
       s.path.shift();
       s.progress = 0;
+      if (!s.path.length) s.disengaging = false;
       if (!s.path.length && s.pendingFacing !== undefined) {
         s.targetFacing = s.pendingFacing;
         s.pendingFacing = undefined;
@@ -258,49 +276,139 @@ export function squadPosition(b: Battle, s: Squad) {
   };
 }
 
-// The opening raid is a reversible threat, not automatic conquest.
+// Combat is resolved in timed exchanges; effects are emitted only by real attacks.
 export function advanceRaid(b: Battle, dt: number) {
-  const r = b.raid;
-  if (!r || r.phase === "gone") return;
-  const e = r.troop,
-    at = squadPosition(b, e);
-  const defenders = b.squads.filter((s) => {
-    const p = squadPosition(b, s);
-    return Math.hypot(p.x - at.x, p.y - at.y) < DX * 1.65;
-  });
-  if (r.phase !== "retreat") {
-    r.pressure = Math.max(
-      0,
-      Math.min(
-        1,
-        r.pressure + dt * (defenders.length ? defenders.length / 4 : -0.12),
-      ),
-    );
-    if (r.pressure >= 1 || r.supplies <= 0) {
-      r.phase = "retreat";
-      r.outcome = r.supplies > 0 ? "protected" : "raided";
-      r.resolvedAt = b.time;
-      const p = route(b, e, 3 * COLS + 17);
-      e.path = e.progress > 0 ? [e.path[0], ...p] : p;
-      if (!e.path.length && e.cell === 3 * COLS + 17) r.phase = "gone";
+  b.strikes = (b.strikes ?? []).filter((hit) => b.time - hit.time < 0.8);
+  for (const s of b.squads) {
+    s.cohesion ??= 100;
+    s.cooldown = Math.max(0, (s.cooldown ?? 0) - dt);
+    s.engaged = undefined;
+    if (s.routing && !s.path.length) {
+      s.cohesion = Math.min(100, s.cohesion + dt * 6);
+      if (s.cohesion >= 60) s.routing = false;
     }
   }
-  if (r.phase === "loot" && !defenders.length) {
+  const r = b.raid;
+  if (!r || r.phase === "gone") return;
+  const e = r.troop;
+  e.cohesion ??= 100;
+  e.cooldown = Math.max(0, (e.cooldown ?? 0) - dt);
+  e.engaged = undefined;
+  const at = squadPosition(b, e);
+  const defenders = b.squads.filter(
+    (s) =>
+      !s.routing &&
+      Math.hypot(squadPosition(b, s).x - at.x, squadPosition(b, s).y - at.y) <
+        DX * 1.65,
+  );
+  const hit = (
+    source: Squad,
+    target: Squad,
+    damage: number,
+    enemy: boolean,
+  ) => {
+    target.cohesion = Math.max(0, (target.cohesion ?? 100) - damage);
+    target.lastHit = b.time;
+    const p = squadPosition(b, source),
+      t = squadPosition(b, target);
+    b.strikes!.push({ x: p.x, y: p.y, tx: t.x, ty: t.y, time: b.time, enemy });
+    source.cooldown = 1.35;
+  };
+  const withdraw = () => {
+    r.phase = "retreat";
+    r.outcome = r.supplies > 0 ? "protected" : "raided";
+    r.resolvedAt = b.time;
+    e.engaged = undefined;
+    e.routing = true;
+    const path = route(b, e, 3 * COLS + 17);
+    e.path = e.progress > 0 ? [e.path[0], ...path] : path;
+  };
+  if (r.phase !== "retreat") {
+    if (defenders.length) {
+      r.phase = "fight";
+      const target = defenders
+        .slice()
+        .sort(
+          (a, c) =>
+            Math.hypot(
+              squadPosition(b, a).x - at.x,
+              squadPosition(b, a).y - at.y,
+            ) -
+            Math.hypot(
+              squadPosition(b, c).x - at.x,
+              squadPosition(b, c).y - at.y,
+            ),
+        )[0];
+      const p = squadPosition(b, target);
+      e.engaged = target.id;
+      e.facing = e.targetFacing = Math.atan2(p.y - at.y, p.x - at.x);
+      for (const s of defenders) {
+        s.engaged = e.id;
+        const p = squadPosition(b, s);
+        if (!s.disengaging) {
+          hold(s);
+          s.targetFacing = Math.atan2(at.y - p.y, at.x - p.x);
+        }
+        if (!s.cooldown) hit(s, e, 7, false);
+      }
+      // Both sides fire in the same exchange, even if this breaks cohesion.
+      if (!e.cooldown) hit(e, target, 5, true);
+      for (const s of defenders)
+        if (s.cohesion! <= 0) {
+          s.routing = true;
+          s.engaged = undefined;
+          s.disengaging = true;
+          const candidates = b.cells
+            .filter(
+              (c) =>
+                !blocked(b, c.id, s.id) &&
+                Math.hypot(c.x - at.x, c.y - at.y) > DX * 3,
+            )
+            .sort(
+              (a, c) =>
+                Math.hypot(a.x - b.cells[s.cell].x, a.y - b.cells[s.cell].y) -
+                Math.hypot(c.x - b.cells[s.cell].x, c.y - b.cells[s.cell].y),
+            );
+          for (const c of candidates) {
+            const p = route(b, s, c.id);
+            if (p.length) {
+              s.path = s.progress > 0 ? [s.path[0], ...p] : p;
+              break;
+            }
+          }
+        }
+    } else {
+      if (r.phase === "fight")
+        r.phase =
+          e.cell === 8 * COLS + 14 && !e.path.length ? "loot" : "approach";
+      e.cohesion = Math.min(100, e.cohesion + dt * 2);
+      for (const s of b.squads)
+        if (!s.routing)
+          s.cohesion = Math.min(100, (s.cohesion ?? 100) + dt * 3);
+    }
+    r.pressure = 1 - e.cohesion / 100;
+    if (e.cohesion <= 0 || r.supplies <= 0) withdraw();
+  }
+  if (r.phase === "fight") return;
+  if (r.phase === "loot") {
     const take = Math.min(r.supplies, dt * 4);
     r.supplies -= take;
     r.stolen += take;
+    if (r.supplies <= 0) withdraw();
   }
   if (r.phase === "approach" && e.cell === 8 * COLS + 14 && !e.path.length)
     r.phase = "loot";
-  if (defenders.length && r.phase !== "retreat") return;
   if (!e.path.length) {
-    if (r.phase === "retreat") {
-      if (e.cell === 3 * COLS + 17) {
-        r.phase = "gone";
-        return;
-      }
-      e.path = route(b, e, 3 * COLS + 17);
-    } else if (r.phase === "approach") e.path = route(b, e, 8 * COLS + 14);
+    if (r.phase === "retreat" && e.cell === 3 * COLS + 17) {
+      r.phase = "gone";
+      return;
+    }
+    if (r.phase !== "loot")
+      e.path = route(
+        b,
+        e,
+        r.phase === "retreat" ? 3 * COLS + 17 : 8 * COLS + 14,
+      );
   }
   if (!e.path.length) return;
   const next = e.path[0];
@@ -319,8 +427,7 @@ export function advanceRaid(b: Battle, dt: number) {
   }
   const a = b.cells[e.cell],
     c = b.cells[next];
-  e.targetFacing = Math.atan2(c.y - a.y, c.x - a.x);
-  e.facing = e.targetFacing;
+  e.facing = e.targetFacing = Math.atan2(c.y - a.y, c.x - a.x);
   e.progress += dt / (r.phase === "retreat" ? 2 : 4.5);
   if (e.progress >= 1) {
     e.cell = next;
