@@ -421,9 +421,7 @@ export default function Board() {
               lastW / 2 -
               DX *
                 (b.outpost
-                  ? lastW < 700
-                    ? 6.5
-                    : 9
+                  ? 3.8
                   : b.lesson?.index === 0
                     ? 5
                     : b.lesson && (b.lesson.index === 2 || b.lesson.index === 3)
@@ -437,7 +435,7 @@ export default function Board() {
               lastH / 2 -
               R *
                 (b.outpost
-                  ? 10.5
+                  ? 12
                   : b.lesson?.index === 0
                     ? 12
                     : b.lesson && (b.lesson.index === 2 || b.lesson.index === 3)
@@ -633,8 +631,8 @@ export default function Board() {
           const c = b.cells[s.deployCell],
             x = c.x * world.scale.x + pan.x,
             y = c.y * world.scale.y + pan.y;
-          menuRef.current.style.left = `${Math.max(8, Math.min(app.screen.width - 195, x + 24 * world.scale.x))}px`;
-          menuRef.current.style.top = `${Math.max(80, Math.min(app.screen.height - 210, y - 23 * world.scale.y))}px`;
+          menuRef.current.style.left = `${Math.max(8, Math.min(app.screen.width - 230, x + 24 * world.scale.x))}px`;
+          menuRef.current.style.top = `${Math.max(80, Math.min(app.screen.height - 155, y - 23 * world.scale.y))}px`;
           menuRef.current.style.visibility =
             x < 0 || x > app.screen.width || y < 0 || y > app.screen.height
               ? "hidden"
@@ -1150,11 +1148,23 @@ export default function Board() {
           aria-label="Añadir tropas en esta celda"
         >
           <div className="map-recruit-heading">
-            <span>
-              {game.battle.squads.find((u) => u.cell === game.deployCell)
-                ?.members.length ?? 0}
-              /6 · Despliegue
-            </span>
+            <div
+              className="squad-capacity"
+              aria-label={`Capacidad ${game.battle.squads.find((u) => u.cell === game.deployCell)?.members.length ?? 0} de 6`}
+            >
+              {Array.from({ length: 6 }, (_, i) => (
+                <i
+                  key={i}
+                  className={
+                    i <
+                    (game.battle.squads.find((u) => u.cell === game.deployCell)
+                      ?.members.length ?? 0)
+                      ? "filled"
+                      : ""
+                  }
+                />
+              ))}
+            </div>
             <button
               aria-label="Cerrar tropas disponibles"
               onClick={() => useTactics.setState({ deployCell: null })}
@@ -1162,23 +1172,26 @@ export default function Board() {
               ×
             </button>
           </div>
-          {troopTypes.map((type) => (
-            <button
-              key={type}
-              aria-label={`Añadir ${troopNames[type]}`}
-              disabled={
-                game.battle.outpost!.reserve[type] === 0 ||
-                !!deploymentError(game.battle, game.deployCell!)
-              }
-              onClick={() => game.placeTroop(type)}
-            >
-              <i className={`reserve-icon ${type}`}>
-                {type === "shield" ? "♜" : type === "bow" ? "⌁" : "♞"}
-              </i>
-              <span>{troopNames[type]}</span>
-              <b>{game.battle.outpost!.reserve[type]}</b>
-            </button>
-          ))}
+          <div className="recruit-tokens">
+            {troopTypes.map((type) => (
+              <button
+                key={type}
+                aria-label={`Añadir ${troopNames[type]}`}
+                title={troopNames[type]}
+                disabled={
+                  game.battle.outpost!.reserve[type] === 0 ||
+                  !!deploymentError(game.battle, game.deployCell!)
+                }
+                onClick={() => game.placeTroop(type)}
+              >
+                <i className={`reserve-icon ${type}`}>
+                  {type === "shield" ? "♜" : type === "bow" ? "⌁" : "♞"}
+                </i>
+                <span className="token-name">{troopNames[type]}</span>
+                <b>{game.battle.outpost!.reserve[type]}</b>
+              </button>
+            ))}
+          </div>
         </div>
       )}
     </>

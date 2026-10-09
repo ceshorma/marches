@@ -747,3 +747,75 @@ button:focus-visible {
     transition: none !important;
   }
 }
+
+/* A small muster tray, anchored to the selected hex. */
+.map-recruit:has(.map-recruit-heading) {
+  width: 218px;
+  padding: 7px;
+  border: 0;
+  background: #f5f3eceb;
+  border-radius: 32px 32px 22px 22px;
+  box-shadow: 0 5px 18px #34475018;
+}
+.map-recruit-heading {
+  padding: 0 6px 3px 13px;
+}
+.squad-capacity {
+  display: flex;
+  gap: 5px;
+}
+.squad-capacity i {
+  width: 8px;
+  height: 4px;
+  background: #34475025;
+  border-radius: 1px;
+}
+.squad-capacity i.filled {
+  background: #397cac;
+}
+.recruit-tokens {
+  display: flex;
+  gap: 7px;
+}
+.recruit-tokens button {
+  position: relative;
+  width: 64px;
+  height: 76px;
+  padding: 6px 1px;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  gap: 2px;
+  border-radius: 22px;
+  border: 1px solid #397cac45;
+  background: #397cac0c;
+}
+.recruit-tokens .reserve-icon {
+  font-size: 29px;
+  line-height: 32px;
+  font-style: normal;
+}
+.recruit-tokens .token-name {
+  font-size: 9px;
+}
+.recruit-tokens button b {
+  position: absolute;
+  right: 0;
+  top: -4px;
+  display: grid;
+  place-items: center;
+  min-width: 20px;
+  height: 20px;
+  border-radius: 50%;
+  background: #397cac;
+  color: #fff;
+  font-size: 11px;
+  border: 2px solid #f5f3ec;
+}
+.recruit-tokens button:not(:disabled):active {
+  transform: scale(0.94);
+}
+.recruit-tokens button:disabled {
+  border-color: transparent;
+  background: transparent;
+}
