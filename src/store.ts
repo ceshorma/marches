@@ -22,6 +22,7 @@ interface State {
   zoom: number;
   focus: { x: number; y: number; nonce: number } | null;
   toast: string | null;
+  hasMoved: boolean;
   select: (s: Selection) => void;
   setPaused: (v: boolean) => void;
   setSpeed: (n: number) => void;
@@ -44,9 +45,10 @@ export const useGame = create<State>((set, get) => ({
   selection: null,
   mode: "select",
   layer: "influence",
-  zoom: 0.85,
+  zoom: 1.6,
   focus: null,
   toast: null,
+  hasMoved: false,
   select: (s) => set({ selection: s, mode: "select" }),
   setPaused: (paused) => set({ paused }),
   setSpeed: (speed) => set({ speed, paused: false }),
@@ -65,7 +67,8 @@ export const useGame = create<State>((set, get) => ({
     const error = moveUnit(get().world, id, target);
     set({
       version: get().version + 1,
-      toast: error ?? "Orden recibida. La unidad se dirige al destino.",
+      toast: error,
+      hasMoved: get().hasMoved || !error,
       mode: "select",
     });
   },
@@ -73,7 +76,7 @@ export const useGame = create<State>((set, get) => ({
     const error = recruit(get().world, id, type);
     set({
       version: get().version + 1,
-      toast: error ?? "Reclutamiento iniciado.",
+      toast: error,
     });
   },
   posture: (id, p) => {
@@ -95,7 +98,9 @@ export const useGame = create<State>((set, get) => ({
       speed: 1,
       selection: null,
       mode: "select",
-      focus: { x: 780, y: 570, nonce: Date.now() },
-      toast: "Nueva expedición. La misma semilla, nuevas decisiones.",
+      focus: { x: 525, y: 650, nonce: Date.now() },
+      zoom: 1.6,
+      hasMoved: false,
+      toast: null,
     }),
 }));

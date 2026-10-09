@@ -39,6 +39,7 @@ export interface Unit {
   revealed: boolean;
   isolated: boolean;
   attackCooldown: number;
+  waitUntil?: number;
 }
 export interface Place {
   id: string;
@@ -50,6 +51,7 @@ export interface Place {
   capturing: Faction | null;
   discovered: boolean;
   threatened: boolean;
+  claimed?: boolean;
   queue: { type: UnitType; remaining: number; total: number }[];
 }
 export interface GameEvent {
@@ -220,7 +222,7 @@ export function createWorld(seed = 24300): World {
         ...pos(q, r),
         terrain,
         region,
-        explored: q < 43 && !(r < 18 && q < 18) && r > 6,
+        explored: false,
         ally: 0,
         enemy: 0,
         owner: "neutral",
@@ -248,14 +250,15 @@ export function createWorld(seed = 24300): World {
       faction,
       capture: 0,
       capturing: null,
-      discovered: faction === "ally" || kind === "bridge",
+      discovered: faction === "ally",
+      claimed: faction === "ally",
       threatened: false,
       queue: [],
     };
   };
   const places = [
     place("fort", "Fuerte del Alba", "fort", 13, 25, "ally"),
-    place("village", "Valle Claro", "village", 17, 31, "ally"),
+    place("village", "Valle Claro", "village", 20, 24, "neutral"),
     place("bridge", "Puente del Vado", "bridge", 25, 21, "neutral"),
     place("tower", "Torre de la Vigía", "tower", 23, 8, "neutral"),
     place("redfort", "Bastión Carmesí", "fort", 39, 17, "enemy"),
@@ -291,9 +294,10 @@ export function createWorld(seed = 24300): World {
     };
   };
   const units = [
-    unit("u1", "Guardia del Alba", "infantry", 16, 24, "ally"),
-    unit("u2", "Arqueros del Valle", "archer", 15, 26, "ally"),
-    unit("u3", "Jinetes de la Marca", "cavalry", 18, 25, "ally"),
+    unit("u1", "Guardia del Alba", "infantry", 16, 24, "ally", [
+      cellId(15, 24),
+      cellId(16, 24),
+    ]),
     unit("e1", "Patrulla Carmesí", "infantry", 33, 21, "enemy", [
       cellId(26, 21),
       cellId(33, 21),
@@ -318,19 +322,9 @@ export function createWorld(seed = 24300): World {
     places,
     units,
     time: 0,
-    gold: 120,
-    supplies: 85,
-    events: [
-      {
-        id: 1,
-        time: 0,
-        title: "La frontera despierta",
-        detail:
-          "Tu compañía espera en Valle Claro. Asegura el Puente del Vado antes de que llegue la patrulla del este.",
-        cell: cellId(24, 21),
-        kind: "info",
-      },
-    ],
+    gold: 35,
+    supplies: 0,
+    events: [],
     nextId: 10,
     revision: 0,
     influenceClock: 1,

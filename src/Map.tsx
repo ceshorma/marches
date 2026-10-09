@@ -133,7 +133,7 @@ export default function Map() {
       try {
         await app.init({
           resizeTo: el,
-          background: 0xecebe2,
+          background: C.paper,
           antialias: true,
           resolution: Math.min(devicePixelRatio, 2),
           autoDensity: true,
@@ -147,7 +147,7 @@ export default function Map() {
         el.appendChild(app.canvas);
         app.canvas.setAttribute(
           "aria-label",
-          "Mapa interactivo de MARCHES. Selecciona una unidad y después Mover tropas. Arrastra para desplazar y usa la rueda para acercar.",
+          "Mapa de MARCHES. Arrastra una unidad para moverla o selecciónala y pulsa un destino. Arrastra el terreno para desplazar y usa la rueda para acercar.",
         );
         app.canvas.setAttribute("role", "application");
         const root = new Container();
@@ -319,8 +319,8 @@ export default function Map() {
           }
         };
         build();
-        let targetX = 780,
-          targetY = 555;
+        let targetX = 525,
+          targetY = 650;
         let zoom = useGame.getState().zoom,
           targetZoom = zoom;
         let viewX = targetX,
@@ -333,6 +333,12 @@ export default function Map() {
           null;
         let dragged = false;
         let frame = 0;
+        let dragUnit: string | null = null;
+        let previewPath: number[] = [];
+        let previewCell = -1;
+        let fogOpacity = new Float32Array(
+          worldRef.cells.map((c) => (c.explored ? 0 : 1)),
+        );
         const toWorld = (x: number, y: number) => ({
           x: (x - app.screen.width / 2) / zoom + viewX,
           y: (y - app.screen.height / 2) / zoom + viewY,
@@ -351,91 +357,96 @@ export default function Map() {
         };
         const onDown = (e: PointerEvent) => {
           if (e.button !== 0 && e.button !== 2) return;
-          const p = coords(e);
+          const p = coords(e),
+            wp = toWorld(p.x, p.y),
+            s = useGame.getState();
           down = { ...p, vx: targetX, vy: targetY };
           dragged = false;
+          const u = s.world.units.find(
+            (u) =>
+              u.faction === "ally" &&
+              Math.hypot(u.x - wp.x, u.y - wp.y) < Math.max(19, 22 / zoom),
+          );
+          dragUnit = e.button === 0 && u ? u.id : null;
+          if (dragUnit) s.select({ kind: "unit", id: dragUnit });
           app.canvas.setPointerCapture(e.pointerId);
         };
         const onMove = (e: PointerEvent) => {
           const p = coords(e),
-            wp = toWorld(p.x, p.y);
+            wp = toWorld(p.x, p.y),
+            s = useGame.getState();
           hover = nearest(wp.x, wp.y);
-          if (down && Math.hypot(p.x - down.x, p.y - down.y) > 4) {
+          if (down && Math.hypot(p.x - down.x, p.y - down.y) > 5) {
             dragged = true;
-            targetX = down.vx - (p.x - down.x) / zoom;
-            targetY = down.vy - (p.y - down.y) / zoom;
+            if (!dragUnit) {
+              targetX = down.vx - (p.x - down.x) / zoom;
+              targetY = down.vy - (p.y - down.y) / zoom;
+            }
           }
-          app.canvas.style.cursor = dragged
-            ? "grabbing"
-            : useGame.getState().mode === "move"
+          const selected = s.world.units.find(
+            (u) =>
+              u.faction === "ally" && u.id === (dragUnit ?? s.selection?.id),
+          );
+          if (selected && hover.id !== previewCell) {
+            previewCell = hover.id;
+            previewPath = findPath(s.world.cells, selected.cell, hover.id);
+          }
+          app.canvas.style.cursor =
+            dragUnit && dragged
               ? "crosshair"
-              : "grab";
+              : dragged
+                ? "grabbing"
+                : selected
+                  ? "crosshair"
+                  : "grab";
         };
         const onUp = (e: PointerEvent) => {
           if (!down) return;
-          down = null;
-          if (dragged) return;
           const s = useGame.getState(),
             w = s.world,
             p = coords(e),
             wp = toWorld(p.x, p.y),
             cell = nearest(wp.x, wp.y);
-          if (s.mode === "move" && s.selection?.kind === "unit") {
-            s.move(String(s.selection.id), cell.id);
+          const moving = dragUnit;
+          down = null;
+          dragUnit = null;
+          previewPath = [];
+          previewCell = -1;
+          if (dragged) {
+            if (moving) s.move(moving, cell.id);
             return;
           }
-          if (e.button === 2 && s.selection?.kind === "unit") {
-            s.move(String(s.selection.id), cell.id);
-            return;
-          }
-          const discovery = w.events.find(
-            (ev) =>
-              ev.kind === "discovery" &&
-              w.time - ev.time < 18 &&
-              distance(w.cells[ev.cell], wp) < 0.85,
-          );
-          if (discovery) {
-            s.select({ kind: "event", id: discovery.id });
-            s.center(w.cells[discovery.cell].x, w.cells[discovery.cell].y);
-            return;
-          }
-          const clustered = w.units.filter(
+          const selected = w.units.find(
             (u) =>
-              u.faction === "ally" &&
-              w.units.find((a) => a.faction === "ally") &&
-              distance(
-                u,
-                w.units.find((a) => a.faction === "ally")!,
-              ) < 5,
+              u.id === s.selection?.id &&
+              s.selection.kind === "unit" &&
+              u.faction === "ally",
           );
-          if (zoom < 0.6 && clustered.length > 1) {
-            const center = {
-              x: clustered.reduce((a, u) => a + u.x, 0) / clustered.length,
-              y: clustered.reduce((a, u) => a + u.y, 0) / clustered.length,
-            };
-            if (distance(center, wp) < 1) {
-              s.select({ kind: "unit", id: clustered[0].id });
-              return;
-            }
-          }
-          const u = w.units
-            .filter((u) => u.revealed)
-            .find(
-              (u) =>
-                Math.hypot(u.x - wp.x, u.y - wp.y) < Math.max(15, 16 / zoom),
-            );
-          if (u) {
+          const u = w.units.find(
+            (u) =>
+              u.revealed &&
+              Math.hypot(u.x - wp.x, u.y - wp.y) < Math.max(19, 22 / zoom),
+          );
+          if (u && (u.faction === "ally" || !selected)) {
             s.select({ kind: "unit", id: u.id });
             return;
           }
           const place = w.places.find(
-            (b) => b.discovered && distance(w.cells[b.cell], wp) < 0.75,
+            (p) => p.discovered && distance(w.cells[p.cell], wp) < 0.85,
           );
+          if (place?.faction === "ally" && e.button === 0) {
+            s.select({ kind: "place", id: place.id });
+            return;
+          }
+          if (selected) {
+            s.move(selected.id, cell.id);
+            return;
+          }
           if (place) {
             s.select({ kind: "place", id: place.id });
             return;
           }
-          s.select({ kind: "cell", id: cell.id });
+          s.select(null);
         };
         const onWheel = (e: WheelEvent) => {
           e.preventDefault();
@@ -457,6 +468,8 @@ export default function Map() {
         app.canvas.addEventListener("pointerup", onUp);
         app.canvas.addEventListener("pointercancel", () => {
           down = null;
+          dragUnit = null;
+          previewPath = [];
         });
         app.canvas.addEventListener("wheel", onWheel, { passive: false });
         app.canvas.addEventListener("contextmenu", context);
@@ -466,6 +479,9 @@ export default function Map() {
           if (w !== worldRef) {
             build();
             lastRevision = -1;
+            fogOpacity = new Float32Array(
+              w.cells.map((c) => (c.explored ? 0 : 1)),
+            );
           }
           if (s.zoom !== lastZoom) {
             targetZoom = s.zoom;
@@ -488,8 +504,8 @@ export default function Map() {
             app.screen.height / 2 - viewY * zoom,
           );
           frame += ticker.deltaTime;
-          const tacticalAlpha = Math.max(0, Math.min(1, (zoom - 1.12) / 0.55));
-          grid.alpha = tacticalAlpha * 0.4;
+          const tacticalAlpha = Math.max(0, Math.min(1, (zoom - 1.8) / 0.65));
+          grid.alpha = tacticalAlpha * 0.25;
           regionLabels.alpha = Math.max(0.15, Math.min(1, 1.6 - zoom * 0.6));
           details.alpha = Math.min(1, 0.45 + zoom * 0.6);
           placeLabels.alpha = Math.min(1, 0.45 + zoom * 0.6);
@@ -522,15 +538,30 @@ export default function Map() {
                   }
                 }
               }
-              if (!c.explored)
+              fogOpacity[c.id] +=
+                ((c.explored ? 0 : 1) - fogOpacity[c.id]) * 0.42;
+              if (fogOpacity[c.id] > 0.01)
                 fog
                   .poly(polygon(c, R + 0.5))
-                  .fill({ color: C.paper, alpha: 0.78 });
+                  .fill({ color: C.paper, alpha: fogOpacity[c.id] });
             }
             for (const t of placeLabels.children) {
               const p = w.places.find((p) => p.id === t.name);
               t.visible = !!p?.discovered;
             }
+          }
+          for (const t of regionLabels.children) {
+            const c = nearest(t.x, t.y);
+            t.visible =
+              c.explored &&
+              w.places.filter((p) => p.faction === "ally").length > 1;
+          }
+          for (const t of placeLabels.children) {
+            const p = w.places.find((p) => p.id === t.name);
+            t.visible =
+              !!p?.discovered &&
+              ((s.selection?.kind === "place" && s.selection.id === p.id) ||
+                hover?.id === p.cell);
           }
           influence.visible = s.layer === "influence";
           dynamic.clear();
@@ -654,6 +685,15 @@ export default function Map() {
                   .lineTo(c.x + i, c.y + 5)
                   .stroke({ color: 0x8c8778, width: 1 });
             }
+            if (
+              p.faction === "neutral" &&
+              p.kind === "village" &&
+              p.capture === 0
+            ) {
+              dynamic
+                .circle(c.x, c.y, 23 + Math.sin(frame * 0.025) * 2)
+                .stroke({ color: 0x9aa17d, width: 1, alpha: 0.25 });
+            }
             if (p.capture > 0) {
               dynamic
                 .circle(c.x, c.y, 25)
@@ -751,7 +791,25 @@ export default function Map() {
               .stroke({ color: C.blue, width: 2, alpha: aggregate });
             symbol(dynamic, "commander", x, y, 11, C.blue, aggregate);
           }
-          if (hover) {
+          if (
+            selected?.faction === "ally" &&
+            previewPath.length &&
+            (!dragged || dragUnit)
+          ) {
+            dashed(
+              tactical,
+              [selected, ...previewPath.map((id) => w.cells[id])],
+              C.blue,
+              1.7,
+              0.55,
+              5,
+            );
+            const end = w.cells[previewPath[previewPath.length - 1]];
+            tactical
+              .circle(end.x, end.y, 8)
+              .stroke({ color: C.blue, width: 1.5, alpha: 0.6 });
+          }
+          if (hover && hover.explored) {
             tactical
               .poly(polygon(hover, R - 1))
               .fill({

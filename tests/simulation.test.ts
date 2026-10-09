@@ -50,11 +50,11 @@ test("enemy patrol moves during 30 seconds of observation", () => {
 test("recruitment charges once, respects time and spawns allies", () => {
   const w = initialWorld();
   assert.equal(recruit(w, "fort", "infantry"), null);
-  assert.equal(w.gold, 85);
+  assert.equal(w.gold, 0);
   advance(w, 10);
-  assert.equal(w.units.filter((u) => u.faction === "ally").length, 3);
+  assert.equal(w.units.filter((u) => u.faction === "ally").length, 1);
   advance(w, 3);
-  assert.equal(w.units.filter((u) => u.faction === "ally").length, 4);
+  assert.equal(w.units.filter((u) => u.faction === "ally").length, 2);
   assert.equal(w.places[0].queue.length, 0);
   w.gold = 0;
   assert.ok(recruit(w, "fort", "cavalry"));
@@ -66,6 +66,7 @@ test("capturing a strategic position grows influence", () => {
     c = w.cells[bridge.cell],
     u = w.units[0];
   const initial = w.cells.filter((c) => c.owner === "ally").length;
+  u.posture = "defend";
   u.cell = c.id;
   u.x = c.x;
   u.y = c.y;
@@ -157,4 +158,20 @@ test("losing the bridge reopens the active objective", () => {
   advance(w, 14);
   assert.equal(p.faction, "enemy");
   assert.equal(w.objectiveComplete, false);
+});
+
+test("opening starts small and expansion unlocks options through play", () => {
+  const w = initialWorld();
+  assert.equal(w.units.filter((u) => u.faction === "ally").length, 1);
+  assert.equal(w.places.filter((p) => p.faction === "ally").length, 1);
+  assert.ok(w.cells.filter((c) => c.explored).length < 140);
+  assert.equal(w.events.length, 0);
+  assert.ok(recruit(w, "fort", "archer"));
+  const known = w.cells.filter((c) => c.explored).length;
+  const village = w.places.find((p) => p.id === "village")!;
+  assert.equal(moveUnit(w, "u1", village.cell), null);
+  advance(w, 26);
+  assert.equal(village.faction, "ally");
+  assert.ok(w.cells.filter((c) => c.explored).length > known);
+  assert.equal(recruit(w, "fort", "archer"), null);
 });

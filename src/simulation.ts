@@ -40,6 +40,8 @@ export function recruit(
   const p = w.places.find((p) => p.id === placeId);
   if (!p || p.faction !== "ally" || p.kind !== "fort")
     return "Solo puedes reclutar en fortalezas aliadas.";
+  if (!availableTroops(w).includes(type))
+    return "Explora y asegura otra posición.";
   if (w.gold < costs[type]) return "No hay suficiente oro.";
   if (p.queue.length >= 3) return "La cola de reclutamiento está completa.";
   w.gold -= costs[type];
@@ -65,7 +67,7 @@ export function projectInfluence(w: World, immediate = false) {
       .map((p) => ({
         cell: p.cell,
         faction: p.faction,
-        strength: p.kind === "fort" ? 11 : 8,
+        strength: p.kind === "fort" ? (p.faction === "ally" ? 6 : 11) : 7,
       })),
     ...w.units.map((u) => ({ cell: u.cell, faction: u.faction, strength: 4 })),
   ];
@@ -107,8 +109,12 @@ export function projectInfluence(w: World, immediate = false) {
 }
 function reveal(w: World) {
   for (const u of w.units.filter((u) => u.faction === "ally")) {
-    const radius = u.type === "cavalry" ? 7 : 5;
+    const radius = u.type === "cavalry" ? 6 : 4.5;
     for (const c of w.cells) if (distance(c, u) < radius) c.explored = true;
+  }
+  for (const p of w.places.filter((p) => p.faction === "ally")) {
+    for (const c of w.cells)
+      if (distance(c, w.cells[p.cell]) < 3.5) c.explored = true;
   }
   for (const p of w.places) {
     if (!p.discovered && w.cells[p.cell].explored) {
@@ -137,7 +143,7 @@ function reveal(w: World) {
   }
 }
 function autoOrder(w: World, u: Unit) {
-  if (u.path.length) return;
+  if (u.path.length || w.time < (u.waitUntil ?? 0)) return;
   if (u.posture === "patrol" && u.patrol.length) {
     const target = u.patrol[u.patrolIndex % u.patrol.length];
     u.patrolIndex++;
@@ -170,6 +176,10 @@ function processCapture(w: World, p: Place, dt: number) {
     if (p.capture >= 100) {
       const previousFaction = p.faction;
       p.faction = faction;
+      if (faction === "ally" && !p.claimed) {
+        w.gold += 45;
+        p.claimed = true;
+      }
       p.capture = 0;
       p.capturing = null;
       if (p.discovered || faction === "ally")
@@ -237,14 +247,18 @@ export function tick(w: World, dt: number) {
       const c = w.cells[u.path[0]],
         d = Math.hypot(c.x - u.x, c.y - u.y),
         speed =
-          (u.faction === "enemy" ? 11 : u.type === "cavalry" ? 42 : 29) *
-          (c.terrain === "forest" ? 0.65 : 1);
+          (u.faction === "enemy" || u.posture === "patrol"
+            ? 11
+            : u.type === "cavalry"
+              ? 42
+              : 29) * (c.terrain === "forest" ? 0.65 : 1);
       const travel = dt * speed;
       if (d <= travel) {
         u.x = c.x;
         u.y = c.y;
         u.cell = c.id;
         u.path.shift();
+        if (!u.path.length && u.posture === "patrol") u.waitUntil = w.time + 3;
       } else {
         u.x += ((c.x - u.x) / d) * travel;
         u.y += ((c.y - u.y) / d) * travel;
@@ -350,6 +364,7 @@ export function initialWorld(seed = 24300) {
   const w = createWorld(seed);
   projectInfluence(w, true);
   reveal(w);
+  w.events = [];
   return w;
 }
 export function patrolUnit(w: World, u: Unit) {
@@ -363,3 +378,12 @@ export function patrolUnit(w: World, u: Unit) {
   u.posture = "patrol";
 }
 export const worldSize = { width: 50 * DX, height: 40 * 27 };
+
+export function availableTroops(w: World): UnitType[] {
+  const n = w.places.filter((p) => p.faction === "ally").length;
+  return n >= 3
+    ? ["infantry", "archer", "cavalry"]
+    : n >= 2
+      ? ["infantry", "archer"]
+      : ["infantry"];
+}
