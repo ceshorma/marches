@@ -34,6 +34,8 @@ export type Squad = {
   lastHit?: number;
 };
 export type Raid = {
+  target?: number;
+  home?: number;
   troop: Squad;
   phase: "approach" | "fight" | "loot" | "retreat" | "gone";
   pressure: number;
@@ -57,7 +59,24 @@ export type Front = {
   target: string;
   rethink: number;
 };
+export type OutpostSite = {
+  cell: number;
+  progress: number;
+  builtAt: number | null;
+  active: boolean;
+};
 export type Battle = {
+  outpost?: {
+    fort: number;
+    sites: OutpostSite[];
+    nextRaid: number;
+    nextReinforcement: number;
+    serial: number;
+    waves: number;
+    noticeUntil: number;
+    notice: string;
+    recruitAt: number;
+  };
   lesson?: {
     index: number;
     status: "active" | "won" | "lost";
@@ -359,7 +378,7 @@ export function advanceRaid(b: Battle, dt: number) {
     r.resolvedAt = b.time;
     e.engaged = undefined;
     e.routing = true;
-    const path = route(b, e, 3 * COLS + 17);
+    const path = route(b, e, r.home ?? 3 * COLS + 17);
     e.path = e.progress > 0 ? [e.path[0], ...path] : path;
   };
   if (r.phase !== "retreat") {
@@ -419,8 +438,10 @@ export function advanceRaid(b: Battle, dt: number) {
     } else {
       if (r.phase === "fight")
         r.phase =
-          e.cell === 8 * COLS + 14 && !e.path.length ? "loot" : "approach";
-      e.cohesion = Math.min(100, e.cohesion + dt * 2);
+          e.cell === (r.target ?? 8 * COLS + 14) && !e.path.length
+            ? "loot"
+            : "approach";
+      e.cohesion = Math.min(b.outpost ? 30 : 100, e.cohesion + dt * 2);
       for (const s of b.squads)
         if (!s.routing)
           s.cohesion = Math.min(100, (s.cohesion ?? 100) + dt * 3);
@@ -435,10 +456,14 @@ export function advanceRaid(b: Battle, dt: number) {
     r.stolen += take;
     if (r.supplies <= 0) withdraw();
   }
-  if (r.phase === "approach" && e.cell === 8 * COLS + 14 && !e.path.length)
+  if (
+    r.phase === "approach" &&
+    e.cell === (r.target ?? 8 * COLS + 14) &&
+    !e.path.length
+  )
     r.phase = "loot";
   if (!e.path.length) {
-    if (r.phase === "retreat" && e.cell === 3 * COLS + 17) {
+    if (r.phase === "retreat" && e.cell === (r.home ?? 3 * COLS + 17)) {
       r.phase = "gone";
       return;
     }
@@ -446,7 +471,9 @@ export function advanceRaid(b: Battle, dt: number) {
       e.path = route(
         b,
         e,
-        r.phase === "retreat" ? 3 * COLS + 17 : 8 * COLS + 14,
+        r.phase === "retreat"
+          ? (r.home ?? 3 * COLS + 17)
+          : (r.target ?? 8 * COLS + 14),
       );
   }
   if (!e.path.length) return;
@@ -460,7 +487,9 @@ export function advanceRaid(b: Battle, dt: number) {
       e.path = route(
         b,
         e,
-        r.phase === "retreat" ? 3 * COLS + 17 : 8 * COLS + 14,
+        r.phase === "retreat"
+          ? (r.home ?? 3 * COLS + 17)
+          : (r.target ?? 8 * COLS + 14),
       );
     return;
   }

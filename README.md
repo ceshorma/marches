@@ -1,8 +1,22 @@
-# MARCHES · Primera campaña
+# MARCHES · La frontera
 
 Prototipo de apertura: protege una aldea aliada de una patrulla visible en un tablero cenital de 18 × 12 hexágonos. React, TypeScript, PixiJS, Zustand y Vite; sin backend ni recursos gráficos externos.
 
-## Campaña inicial (inicio por defecto)
+## La frontera (nuevo inicio)
+
+Un ciclo continuo sobre el mismo mapa:
+
+1. Crear un escuadrón de **un lancero** en el cuartel.
+2. Ordenarle llegar a uno de tres emplazamientos. Permanecer quieto allí construye una torre en seis segundos; salir pausa la construcción.
+3. La torre proyecta control gradualmente durante unos siete segundos sobre hasta dos pasos de terreno conectado. Rocas bloquean; bosque y desnivel consumen más alcance. El control permanece aunque se vaya el constructor.
+4. Doce segundos después de la primera torre aparece una incursión visible desde el este. Puedes interceptarla, defender o abandonar la posición.
+5. Si la patrulla completa el saqueo destruye la torre y su zona de control. El emplazamiento se puede reconstruir.
+
+El primer refuerzo llega al cuartel 16 segundos después de construir; después, cada 30 segundos, hasta cinco escuadrones. Puedes crear otro manualmente cuando esté listo (25 segundos). Las patrullas vuelven tras retirarse, con una pausa de 28 segundos. No hay pantallas de victoria, salto de misión ni final automático: puedes seguir expandiendo y defendiendo.
+
+«Juego libre» conserva el escenario avanzado de tres frentes; «La frontera» vuelve a este inicio. La campaña por etapas anterior se mantiene en el código y en las pruebas, pero ya no es el flujo predeterminado. El módulo `src/tactics/outpost.ts` contiene construcción, influencia, llegadas y ciclo de incursiones.
+
+## Campaña por etapas anterior
 
 Cinco misiones con objetivo y cierre propios:
 

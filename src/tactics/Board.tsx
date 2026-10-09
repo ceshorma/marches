@@ -1,3 +1,4 @@
+import { outpostInfluence } from "./outpost";
 import { useEffect, useRef } from "react";
 import { Application, Container, Graphics, Text } from "pixi.js";
 import { useTactics } from "./state";
@@ -48,10 +49,13 @@ function soldiers(
   ];
   s.members.forEach((m, i) => {
     const disorder = Math.max(0, 1 - (s.cohesion ?? 100) / 60);
-    const [px, py] = point(
-      (i < 3 ? 10 : -10) + Math.sin(i * 7) * disorder * 6,
-      ((i % 3) - 1) * 16 + Math.cos(i * 4) * disorder * 5,
-    );
+    const [px, py] =
+      s.members.length === 1
+        ? [x, y]
+        : point(
+            (i < 3 ? 10 : -10) + Math.sin(i * 7) * disorder * 6,
+            ((i % 3) - 1) * 16 + Math.cos(i * 4) * disorder * 5,
+          );
     if (m === "horse") {
       const foot = (a: number, b: number) => [
         px + a * c - b * d,
@@ -397,8 +401,11 @@ export default function Board() {
         ) {
           lastW = app.screen.width;
           lastH = app.screen.height;
-          fit =
-            b.lesson?.index === 0
+          fit = b.outpost
+            ? lastW < 700
+              ? 0.6
+              : Math.min((lastW - 60) / (DX * 16), (lastH - 180) / (R * 14))
+            : b.lesson?.index === 0
               ? Math.min((lastW - 60) / (DX * 8), (lastH - 230) / (R * 9))
               : b.lesson && (b.lesson.index === 2 || b.lesson.index === 3)
                 ? Math.min((lastW - 60) / (DX * 12), (lastH - 230) / (R * 12))
@@ -409,25 +416,31 @@ export default function Board() {
             x:
               lastW / 2 -
               DX *
-                (b.lesson?.index === 0
-                  ? 5
-                  : b.lesson && (b.lesson.index === 2 || b.lesson.index === 3)
-                    ? 7
-                    : b.fronts
-                      ? 8.75
-                      : 14.5) *
+                (b.outpost
+                  ? lastW < 700
+                    ? 6.5
+                    : 9
+                  : b.lesson?.index === 0
+                    ? 5
+                    : b.lesson && (b.lesson.index === 2 || b.lesson.index === 3)
+                      ? 7
+                      : b.fronts
+                        ? 8.75
+                        : 14.5) *
                 fit *
                 s.zoom,
             y:
               lastH / 2 -
               R *
-                (b.lesson?.index === 0
-                  ? 12
-                  : b.lesson && (b.lesson.index === 2 || b.lesson.index === 3)
-                    ? 9
-                    : b.fronts
-                      ? 8.2
-                      : 9.2) *
+                (b.outpost
+                  ? 10.5
+                  : b.lesson?.index === 0
+                    ? 12
+                    : b.lesson && (b.lesson.index === 2 || b.lesson.index === 3)
+                      ? 9
+                      : b.fronts
+                        ? 8.2
+                        : 9.2) *
                 fit *
                 s.zoom,
           };
@@ -510,7 +523,9 @@ export default function Board() {
         else if (!moved) {
           if (u) s.select(u.id);
           else if (s.selected && id >= 0) s.move(id);
-          else if (
+          else if (b.outpost && id === b.outpost.fort) {
+            useTactics.setState({ selected: null, selectedBase: "ally" });
+          } else if (
             b.bases &&
             b.sectors?.some(
               (sector) =>
@@ -758,13 +773,11 @@ export default function Board() {
         }
         if (b.lesson) {
           const c = b.cells[b.lesson.target];
-          overlay
-            .poly(hex(c.x, c.y, R - 2))
-            .stroke({
-              color: BLUE,
-              width: 2,
-              alpha: 0.45 + Math.sin(b.time * 2) * 0.15,
-            });
+          overlay.poly(hex(c.x, c.y, R - 2)).stroke({
+            color: BLUE,
+            width: 2,
+            alpha: 0.45 + Math.sin(b.time * 2) * 0.15,
+          });
           if (b.lesson.index === 0) {
             overlay
               .circle(c.x, c.y, R - 7)
@@ -782,8 +795,72 @@ export default function Board() {
                 .stroke({ color: BLUE, width: 3 });
           }
         }
+        if (b.outpost) {
+          territory.clear();
+          const control = outpostInfluence(b);
+          for (const [id, amount] of control) {
+            if (amount <= 0) continue;
+            const c = b.cells[id];
+            territory
+              .poly(hex(c.x, c.y, R - 1))
+              .fill({ color: BLUE, alpha: amount * 0.18 })
+              .stroke({ color: BLUE, alpha: amount * 0.35, width: 1 });
+          }
+          for (const site of b.outpost.sites) {
+            const c = b.cells[site.cell];
+            if (site.active) {
+              overlay
+                .rect(c.x - 11, c.y - 11, 22, 22)
+                .fill(0xc5c3b0)
+                .stroke({ color: 0x788b82, width: 2 });
+              overlay.rect(c.x - 5, c.y - 5, 10, 10).fill(0xe8e5d5);
+              overlay
+                .moveTo(c.x - 10, c.y - 10)
+                .lineTo(c.x - 10, c.y - 31)
+                .stroke({ color: INK, width: 1.5 });
+              overlay
+                .poly([
+                  c.x - 10,
+                  c.y - 31,
+                  c.x + 5,
+                  c.y - 27,
+                  c.x - 10,
+                  c.y - 21,
+                ])
+                .fill(BLUE);
+            } else {
+              overlay
+                .poly(hex(c.x, c.y, R - 4))
+                .stroke({ color: BLUE, width: 1, alpha: 0.3 });
+              overlay
+                .rect(c.x - 10, c.y - 10, 20, 20)
+                .stroke({ color: 0x8e9989, width: 1.5, alpha: 0.65 });
+              overlay
+                .moveTo(c.x - 5, c.y)
+                .lineTo(c.x + 5, c.y)
+                .moveTo(c.x, c.y - 5)
+                .lineTo(c.x, c.y + 5)
+                .stroke({ color: BLUE, width: 1.3, alpha: 0.7 });
+              if (site.progress > 0) {
+                overlay
+                  .moveTo(c.x, c.y - (R - 8))
+                  .arc(
+                    c.x,
+                    c.y,
+                    R - 8,
+                    -Math.PI / 2,
+                    -Math.PI / 2 + site.progress * Math.PI * 2,
+                  )
+                  .stroke({ color: BLUE, width: 3 });
+                overlay
+                  .rect(c.x - 8, c.y - 8, 16, 16)
+                  .fill({ color: 0xc5c3b0, alpha: site.progress });
+              }
+            }
+          }
+        }
         const raid = b.raid,
-          village = b.cells[8 * 18 + 14];
+          village = b.cells[b.raid?.target ?? 8 * 18 + 14];
         if (raid) {
           const danger =
             raid.phase === "loot" ||
@@ -793,24 +870,26 @@ export default function Board() {
                 squadPosition(b, raid.troop).y - village.y,
               ) <
                 DX * 3);
-          overlay
-            .poly(hex(village.x, village.y, R - 2))
-            .fill({ color: BLUE, alpha: 0.05 })
-            .stroke({ color: BLUE, alpha: 0.4, width: 1.5 });
-          overlay
-            .moveTo(village.x - 22, village.y - 8)
-            .lineTo(village.x - 22, village.y - 37)
-            .stroke({ color: INK, width: 1.5 });
-          overlay
-            .poly([
-              village.x - 22,
-              village.y - 37,
-              village.x - 6,
-              village.y - 32,
-              village.x - 22,
-              village.y - 25,
-            ])
-            .fill(BLUE);
+          if (!b.outpost) {
+            overlay
+              .poly(hex(village.x, village.y, R - 2))
+              .fill({ color: BLUE, alpha: 0.05 })
+              .stroke({ color: BLUE, alpha: 0.4, width: 1.5 });
+            overlay
+              .moveTo(village.x - 22, village.y - 8)
+              .lineTo(village.x - 22, village.y - 37)
+              .stroke({ color: INK, width: 1.5 });
+            overlay
+              .poly([
+                village.x - 22,
+                village.y - 37,
+                village.x - 6,
+                village.y - 32,
+                village.x - 22,
+                village.y - 25,
+              ])
+              .fill(BLUE);
+          }
           if (danger)
             overlay
               .circle(village.x, village.y, R + 4 + Math.sin(b.time * 3) * 3)

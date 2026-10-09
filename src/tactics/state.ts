@@ -1,3 +1,4 @@
+import { createOutpost, createScout, updateOutpost } from "./outpost";
 import {
   createMission,
   updateMission,
@@ -29,7 +30,7 @@ type State = {
   tick: (dt: number) => void;
 
   reset: () => void;
-  scenario: "fronts" | "village" | "campaign";
+  scenario: "fronts" | "village" | "campaign" | "outpost";
   missionIndex: number;
   unlocked: number;
   startMission: (index: number) => void;
@@ -37,8 +38,8 @@ type State = {
   switchScenario: () => void;
 };
 export const useTactics = create<State>((set, get) => ({
-  battle: createMission(readProgress()),
-  scenario: "campaign",
+  battle: createOutpost(),
+  scenario: "outpost",
   missionIndex: readProgress(),
   unlocked: readProgress(),
   startMission: (index) => {
@@ -69,7 +70,11 @@ export const useTactics = create<State>((set, get) => ({
     set({ selected, selectedBase: null, orienting: false, message: null }),
   deploy: (type = "shield") => {
     const s = get();
-    const message = spawnReinforcement(s.battle, false, type);
+    const message = s.battle.outpost
+      ? createScout(s.battle)
+      : spawnReinforcement(s.battle, false, type);
+    if (!message && s.battle.outpost)
+      set({ selected: s.battle.squads.at(-1)!.id, selectedBase: null });
     if (!message && s.battle.lesson) s.battle.lesson.deployed = true;
     set({ message, revision: s.revision + 1 });
   },
@@ -107,6 +112,7 @@ export const useTactics = create<State>((set, get) => ({
     ) {
       advance(s.battle, dt);
       updateMission(s.battle, dt);
+      updateOutpost(s.battle, dt);
       if (s.battle.lesson?.status === "won") {
         const unlocked = Math.max(s.unlocked, Math.min(4, s.missionIndex + 1));
         saveProgress(unlocked);
@@ -118,18 +124,20 @@ export const useTactics = create<State>((set, get) => ({
     }
   },
   switchScenario: () => {
-    const scenario = get().scenario === "fronts" ? "campaign" : "fronts";
+    const scenario = get().scenario === "fronts" ? "outpost" : "fronts";
     set({ scenario });
     get().reset();
   },
   reset: () =>
     set({
       battle:
-        get().scenario === "fronts"
-          ? createFrontsBattle()
-          : get().scenario === "campaign"
-            ? createMission(get().missionIndex)
-            : createBattle(true),
+        get().scenario === "outpost"
+          ? createOutpost()
+          : get().scenario === "fronts"
+            ? createFrontsBattle()
+            : get().scenario === "campaign"
+              ? createMission(get().missionIndex)
+              : createBattle(true),
       selected: null,
       selectedBase: null,
       paused: false,
