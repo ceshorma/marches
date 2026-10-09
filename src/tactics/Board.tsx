@@ -113,17 +113,6 @@ export default function Board() {
       app.stage.addChild(world);
       world.addChild(base, overlay);
       const b = useTactics.getState().battle;
-      const intent = new Text({
-        text: "",
-        style: {
-          fontFamily: "Arial",
-          fontSize: 10,
-          fill: 0x9d514b,
-          letterSpacing: 1,
-        },
-      });
-      intent.anchor.set(0.5);
-      world.addChild(intent);
       const morale = (u: Squad, x: number, y: number, color: number) => {
         if (!u.engaged && !u.routing) return;
         overlay
@@ -538,21 +527,9 @@ export default function Board() {
               from = c;
             }
             morale(e, p.x, p.y, 0xc15c53);
-            intent.visible = true;
-            intent.position.set(p.x, p.y - 48);
-            intent.text =
-              raid.phase === "fight"
-                ? (e.cohesion ?? 100) < 30
-                  ? "CEDE"
-                  : "ATACA"
-                : raid.phase === "retreat"
-                  ? "SE RETIRA"
-                  : raid.phase === "loot"
-                    ? "SAQUEA"
-                    : "AVANZA";
+
           }
         }
-        if (raid?.phase === "gone") intent.visible = false;
         for (const hit of b.strikes ?? []) {
           const t = Math.min(1, (b.time - hit.time) / 0.55),
             dx = hit.tx - hit.x,
