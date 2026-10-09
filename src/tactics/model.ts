@@ -1,3 +1,4 @@
+import { advanceFronts } from "./fronts";
 export const COLS = 18,
   ROWS = 12,
   R = 42,
@@ -39,11 +40,32 @@ export type Raid = {
   outcome: "active" | "protected" | "raided";
   resolvedAt: number;
 };
+export type Sector = {
+  id: string;
+  name: string;
+  cell: number;
+  control: number;
+  owner: "ally" | "enemy" | "neutral";
+  allies: number;
+  enemies: number;
+};
+export type Front = {
+  troop: Squad;
+  home: number;
+  target: string;
+  rethink: number;
+};
 export type Battle = {
   cells: Cell[];
   squads: Squad[];
   time: number;
   raid?: Raid;
+  fronts?: Front[];
+  sectors?: Sector[];
+  sectorCells?: number[];
+  pressure?: { ally: number; enemy: number }[];
+  controlClock?: number;
+  bases?: { allyReady: number; enemyReady: number; sequence: number };
   strikes?: {
     x: number;
     y: number;
@@ -55,6 +77,7 @@ export type Battle = {
 };
 export const allTroops = (b: Battle) => [
   ...b.squads,
+  ...(b.fronts?.map((f) => f.troop) ?? []),
   ...(b.raid && b.raid.phase !== "gone" ? [b.raid.troop] : []),
 ];
 export const adjacent = (id: number) => {
@@ -226,7 +249,8 @@ export function hold(s: Squad) {
 }
 export function advance(b: Battle, dt: number) {
   b.time += dt;
-  advanceRaid(b, dt);
+  if (b.fronts) advanceFronts(b, dt);
+  else advanceRaid(b, dt);
   for (const s of b.squads) {
     let delta =
       ((s.targetFacing - s.facing + Math.PI * 3) % (Math.PI * 2)) - Math.PI;

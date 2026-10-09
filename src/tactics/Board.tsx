@@ -1,7 +1,7 @@
 import { useEffect, useRef } from "react";
 import { Application, Container, Graphics, Text } from "pixi.js";
 import { useTactics } from "./state";
-import { R, DX, route, squadPosition } from "./model";
+import { R, DX, route, squadPosition, adjacent } from "./model";
 import type { Squad } from "./model";
 const BLUE = 0x326f97,
   INK = 0x344750;
@@ -128,16 +128,15 @@ export default function Board() {
           )
           .fill((u.cohesion ?? 100) < 30 ? 0xb28a49 : color);
         if (u.lastHit !== undefined && b.time - u.lastHit < 0.25)
-          overlay
-            .circle(x, y, 29)
-            .stroke({
-              color: 0xe7c381,
-              width: 2,
-              alpha: 1 - (b.time - u.lastHit) / 0.25,
-            });
+          overlay.circle(x, y, 29).stroke({
+            color: 0xe7c381,
+            width: 2,
+            alpha: 1 - (b.time - u.lastHit) / 0.25,
+          });
       };
       const terrain = new Graphics();
-      base.addChild(terrain);
+      const territory = new Graphics();
+      base.addChild(terrain, territory);
       for (const c of b.cells) {
         terrain
           .poly(hex(c.x, c.y))
@@ -238,10 +237,31 @@ export default function Board() {
       }
       const road = new Graphics();
       base.addChild(road);
-      road
-        .moveTo(b.cells[146].x, b.cells[146].y)
-        .bezierCurveTo(580, 690, 700, 460, b.cells[158].x, b.cells[158].y)
-        .stroke({ color: 0xc9b18a, alpha: 0.5, width: 9 });
+      if (b.sectors) {
+        const roadWorld = { ...b, squads: [], fronts: [] };
+        for (const [from, to] of [
+          [0, 2],
+          [2, 1],
+          [2, 3],
+          [2, 4],
+        ]) {
+          const start = b.sectors[from].cell,
+            end = b.sectors[to].cell;
+          const path = route(
+            roadWorld,
+            { ...b.squads[0], cell: start, path: [], progress: 0 },
+            end,
+          );
+          road.moveTo(b.cells[start].x, b.cells[start].y);
+          for (const id of path) road.lineTo(b.cells[id].x, b.cells[id].y);
+          road.stroke({ color: 0xc9b18a, alpha: 0.35, width: 6 });
+        }
+      } else {
+        road
+          .moveTo(b.cells[146].x, b.cells[146].y)
+          .bezierCurveTo(580, 690, 700, 460, b.cells[158].x, b.cells[158].y)
+          .stroke({ color: 0xc9b18a, alpha: 0.5, width: 9 });
+      }
       for (const c of b.cells.filter((c) => c.place)) {
         const g = new Graphics();
         base.addChild(g);
@@ -278,11 +298,12 @@ export default function Board() {
         }
         text(
           base,
-          c.place === "fort"
-            ? "FUERTE DEL ALBA"
-            : c.place === "village"
-              ? "ALDEA DEL VALLE"
-              : "LA VIGÍA",
+          b.sectors?.find((s) => s.cell === c.id)?.name ??
+            (c.place === "fort"
+              ? "FUERTE DEL ALBA"
+              : c.place === "village"
+                ? "ALDEA DEL VALLE"
+                : "LA VIGÍA"),
           c.x,
           c.y + 50,
           9,
@@ -337,10 +358,12 @@ export default function Board() {
         ) {
           lastW = app.screen.width;
           lastH = app.screen.height;
-          fit = Math.min((lastW - 55) / (DX * 8), (lastH - 190) / (R * 12));
+          fit = b.fronts
+            ? Math.min((lastW - 50) / (DX * 18), (lastH - 170) / (R * 18))
+            : Math.min((lastW - 55) / (DX * 8), (lastH - 190) / (R * 12));
           pan = {
-            x: lastW / 2 - DX * 14.5 * fit * s.zoom,
-            y: lastH / 2 - R * 9.2 * fit * s.zoom,
+            x: lastW / 2 - DX * (b.fronts ? 8.75 : 14.5) * fit * s.zoom,
+            y: lastH / 2 - R * (b.fronts ? 8.2 : 9.2) * fit * s.zoom,
           };
           lastFocus = s.focus;
           lastZoom = s.zoom;
@@ -421,7 +444,19 @@ export default function Board() {
         else if (!moved) {
           if (u) s.select(u.id);
           else if (s.selected && id >= 0) s.move(id);
-          else s.select(null);
+          else if (
+            b.bases &&
+            b.sectors?.some(
+              (sector) =>
+                sector.cell === id &&
+                (sector.id === "west" || sector.id === "east"),
+            )
+          ) {
+            useTactics.setState({
+              selected: null,
+              selectedBase: id === b.sectors[0].cell ? "ally" : "enemy",
+            });
+          } else s.select(null);
         }
         down = null;
         if (canvas.hasPointerCapture(e.pointerId))
@@ -453,10 +488,201 @@ export default function Board() {
       canvas.addEventListener("pointerup", pointerUp);
       canvas.addEventListener("pointercancel", cancel);
       canvas.addEventListener("wheel", wheel, { passive: false });
+      // Cache sector edges; ownership colors are redrawn from simulation state.
+      const borders = b.sectors
+        ? b.cells.map((c) =>
+            Array.from({ length: 6 }, (_, k) => {
+              const a = (k * Math.PI) / 3,
+                near = adjacent(c.id).find((id) => {
+                  const n = b.cells[id];
+                  return (
+                    Math.abs(
+                      Math.atan2(
+                        Math.sin(Math.atan2(n.y - c.y, n.x - c.x) - a),
+                        Math.cos(Math.atan2(n.y - c.y, n.x - c.x) - a),
+                      ),
+                    ) < 0.2
+                  );
+                });
+              return (
+                near === undefined ||
+                b.sectorCells![near] !== b.sectorCells![c.id]
+              );
+            }),
+          )
+        : [];
+      let lastTerritory = -1;
       app.ticker.add(() => {
         transform();
         const s = useTactics.getState();
         overlay.clear();
+        if (b.sectors && Math.floor(b.time * 2) !== lastTerritory) {
+          lastTerritory = Math.floor(b.time * 2);
+          territory.clear();
+          for (const c of b.cells) {
+            const sector = b.sectors[b.sectorCells![c.id]],
+              p = b.pressure![c.id],
+              color =
+                sector.control > 0.05
+                  ? BLUE
+                  : sector.control < -0.05
+                    ? 0xc8615a
+                    : 0xb59d73;
+            territory
+              .poly(hex(c.x, c.y))
+              .fill({ color, alpha: 0.035 + Math.abs(sector.control) * 0.12 });
+            const strength = Math.max(p.ally, p.enemy);
+            if (strength > 0.12 && c.terrain !== "rock")
+              territory.poly(hex(c.x, c.y, R - 3)).fill({
+                color: p.ally > p.enemy ? BLUE : 0xc8615a,
+                alpha: Math.min(0.14, strength * 0.065),
+              });
+            if (p.enemy > 0.2 && (p.ally > 0.2 || sector.owner === "ally"))
+              for (let j = -1; j <= 1; j++)
+                territory
+                  .moveTo(c.x - 12 + j * 10, c.y + 10)
+                  .lineTo(c.x + j * 10, c.y - 10)
+                  .stroke({ color: 0xc8615a, alpha: 0.35, width: 1 });
+            borders[c.id].forEach((border, k) => {
+              if (!border) return;
+              const a = ((k * 60 - 30) * Math.PI) / 180;
+              territory
+                .moveTo(c.x + Math.cos(a) * R, c.y + Math.sin(a) * R)
+                .lineTo(
+                  c.x + Math.cos(a + Math.PI / 3) * R,
+                  c.y + Math.sin(a + Math.PI / 3) * R,
+                )
+                .stroke({
+                  color:
+                    sector.owner === "ally"
+                      ? BLUE
+                      : sector.owner === "enemy"
+                        ? 0xc8615a
+                        : 0x9b987e,
+                  alpha: 0.55,
+                  width: 1.6,
+                });
+            });
+          }
+        }
+        if (b.sectors) {
+          if (b.bases)
+            for (const side of ["ally", "enemy"] as const) {
+              const sector = b.sectors[side === "ally" ? 0 : 4],
+                c = b.cells[sector.cell],
+                color = side === "ally" ? BLUE : 0xc8615a;
+              overlay
+                .poly(hex(c.x, c.y, R - 5))
+                .stroke({ color, width: 2, alpha: 0.6 });
+              if (sector.owner === side) {
+                const ready =
+                  side === "ally" ? b.bases.allyReady : b.bases.enemyReady;
+                const duration = side === "ally" ? 30 : 35;
+                const progress = Math.max(
+                  0,
+                  Math.min(1, 1 - (ready - b.time) / duration),
+                );
+                overlay
+                  .arc(
+                    c.x,
+                    c.y,
+                    R - 3,
+                    -Math.PI / 2,
+                    -Math.PI / 2 + progress * Math.PI * 2,
+                  )
+                  .stroke({ color, width: 2, alpha: 0.8 });
+              }
+              if (s.selectedBase === side)
+                for (const id of adjacent(sector.cell)) {
+                  const n = b.cells[id];
+                  if (n.terrain === "rock") continue;
+                  overlay
+                    .circle(n.x, n.y, 5)
+                    .stroke({ color, width: 1.4, alpha: 0.5 });
+                }
+            }
+          for (const sector of b.sectors) {
+            const c = b.cells[sector.cell],
+              color =
+                sector.owner === "ally"
+                  ? BLUE
+                  : sector.owner === "enemy"
+                    ? 0xc8615a
+                    : 0x9a987c;
+            overlay
+              .moveTo(c.x - 23, c.y - 10)
+              .lineTo(c.x - 23, c.y - 34)
+              .stroke({ color: INK, width: 1.4 });
+            overlay
+              .poly([c.x - 23, c.y - 34, c.x - 6, c.y - 29, c.x - 23, c.y - 22])
+              .fill(color);
+            if (Math.abs(sector.control) < 0.98) {
+              overlay.roundRect(c.x - 24, c.y + 30, 48, 4, 2).fill(0xc9c6b5);
+              overlay
+                .roundRect(
+                  c.x - 24,
+                  c.y + 30,
+                  Math.max(0.2, (48 * (sector.control + 1)) / 2),
+                  4,
+                  2,
+                )
+                .fill(BLUE);
+              overlay
+                .roundRect(
+                  c.x - 24 + (48 * (sector.control + 1)) / 2,
+                  c.y + 30,
+                  Math.max(0.2, (48 * (1 - sector.control)) / 2),
+                  4,
+                  2,
+                )
+                .fill(0xc8615a);
+            }
+            if (
+              sector.owner === "ally" &&
+              sector.enemies > sector.allies + 0.08
+            )
+              overlay.circle(c.x, c.y, R + 3).stroke({
+                color: 0xc8615a,
+                alpha: 0.2 + Math.sin(b.time * 3) * 0.12,
+                width: 2,
+              });
+          }
+          for (const front of b.fronts!) {
+            const e = front.troop,
+              p = squadPosition(b, e);
+            soldiers(overlay, e, p.x, p.y, e.facing, 1, 0xc15c53);
+            morale(e, p.x, p.y, 0xc15c53);
+            let from = p;
+            if (!e.engaged)
+              for (const id of e.path) {
+                const c = b.cells[id],
+                  len = Math.hypot(c.x - from.x, c.y - from.y);
+                for (let t = 6; t < len; t += 14)
+                  overlay
+                    .circle(
+                      from.x + ((c.x - from.x) * t) / len,
+                      from.y + ((c.y - from.y) * t) / len,
+                      1.6,
+                    )
+                    .fill({ color: 0xc15c53, alpha: e.routing ? 0.3 : 0.55 });
+                from = c;
+              }
+          }
+          // Existing allied orders remain visible at strategic scale.
+          for (const u of b.squads.filter(
+            (u) => u.id !== s.selected && u.path.length,
+          )) {
+            let from = squadPosition(b, u);
+            for (const id of u.path) {
+              const c = b.cells[id];
+              overlay
+                .moveTo(from.x, from.y)
+                .lineTo(c.x, c.y)
+                .stroke({ color: BLUE, alpha: 0.32, width: 1 });
+              from = c;
+            }
+          }
+        }
         const raid = b.raid,
           village = b.cells[8 * 18 + 14];
         if (raid) {
@@ -527,7 +753,6 @@ export default function Board() {
               from = c;
             }
             morale(e, p.x, p.y, 0xc15c53);
-
           }
         }
         for (const hit of b.strikes ?? []) {

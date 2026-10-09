@@ -1,3 +1,4 @@
+import { createFrontsBattle, spawnReinforcement } from "./fronts";
 import { create } from "zustand";
 import { createBattle, advance, order, hold } from "./model";
 import type { Battle } from "./model";
@@ -5,6 +6,8 @@ type State = {
   battle: Battle;
   revision: number;
   selected: string | null;
+  selectedBase: "ally" | "enemy" | null;
+  deploy: () => void;
   paused: boolean;
   speed: number;
   zoom: number;
@@ -16,19 +19,30 @@ type State = {
   rotate: (angle: number) => void;
   stop: () => void;
   tick: (dt: number) => void;
+
   reset: () => void;
+  scenario: "fronts" | "village";
+  switchScenario: () => void;
 };
 export const useTactics = create<State>((set, get) => ({
-  battle: createBattle(true),
+  battle: createFrontsBattle(),
+  scenario: "fronts",
   revision: 0,
   selected: null,
+  selectedBase: null,
   paused: false,
   speed: 1,
   zoom: 1,
   focus: 0,
   orienting: false,
   message: null,
-  select: (selected) => set({ selected, orienting: false, message: null }),
+  select: (selected) =>
+    set({ selected, selectedBase: null, orienting: false, message: null }),
+  deploy: () => {
+    const s = get();
+    const message = spawnReinforcement(s.battle);
+    set({ message, revision: s.revision + 1 });
+  },
   move: (cell) => {
     const s = get();
     if (s.selected)
@@ -62,10 +76,17 @@ export const useTactics = create<State>((set, get) => ({
       set({ revision: s.revision + 1 });
     }
   },
+  switchScenario: () => {
+    const scenario = get().scenario === "fronts" ? "village" : "fronts";
+    set({ scenario });
+    get().reset();
+  },
   reset: () =>
     set({
-      battle: createBattle(true),
+      battle:
+        get().scenario === "fronts" ? createFrontsBattle() : createBattle(true),
       selected: null,
+      selectedBase: null,
       paused: false,
       speed: 1,
       zoom: 1,

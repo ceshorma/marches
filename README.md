@@ -1,6 +1,23 @@
-# MARCHES · Campo de maniobras
+# MARCHES · Tres frentes
 
 Prototipo de apertura: protege una aldea aliada de una patrulla visible en un tablero cenital de 18 × 12 hexágonos. React, TypeScript, PixiJS, Zustand y Vite; sin backend ni recursos gráficos externos.
+
+## Escenario avanzado (inicio por defecto)
+
+Una situación ya en marcha, con siete escuadrones aliados, seis rivales y cinco sectores. El reloj empieza en 04:00 para representar ese estado preparado. Hay dos órdenes aliadas iniciales; puedes reemplazarlas y movilizar las reservas.
+
+- Norte: dos columnas presionan la altura defendida por un escuadrón.
+- Centro: disputa del Paso del Roble, con apoyos de ambos bandos.
+- Sur: avance sobre los campos y la aldea.
+- Las columnas enemigas atacan, se repliegan, recuperan cohesión y vuelven a avanzar. Tras capturar una posición buscan otra.
+- El color suave indica el balance de control; el color local más intenso muestra presencia. Tramas rojas señalan presión enemiga en territorio aliado o celdas disputadas.
+- La bandera y el borde identifican al dueño del sector. Solo cambian al completar la captura, y persisten si se marchan las tropas.
+- El control depende de presencia conectada alrededor de cada posición, limitada por rocas, bosque y desnivel. La transición del color es gradual dentro de cinco sectores prefijados; aún no es una campaña ni expansión libre celda por celda.
+- Los cuarteles son puntos de despliegue. Selecciona el azul (o el botón + inferior) y despliega un escuadrón completo en una celda vecina libre; tarda 30 segundos en preparar el siguiente. El rojo envía su primer refuerzo a los 12 segundos y los siguientes cada 35. Cada bando tiene un máximo de nueve escuadrones en esta demostración.
+- Capturar el sector del cuartel rival corta sus siguientes salidas; sus tropas existentes siguen activas. Si capturan el tuyo tampoco puedes desplegar.
+- «Ver inicio» vuelve a la defensa de la aldea. «Tres frentes» recupera esta escena. Cambiar de escenario o reiniciarlo restablece su estado.
+
+El módulo `src/tactics/fronts.ts` contiene este escenario, su IA y las reglas de presión/captura; `tests/fronts.test.ts` verifica evolución autónoma, exclusión de celdas, intervención y persistencia del control.
 
 ## Ejecutar
 

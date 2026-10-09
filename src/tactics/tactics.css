@@ -345,3 +345,103 @@ button:focus-visible {
     top: 155px;
   }
 }
+.squad-list.expanded {
+  top: 25%;
+  gap: 5px;
+}
+.squad-list.expanded button {
+  padding: 9px;
+}
+.sector-strip {
+  position: absolute;
+  bottom: 27px;
+  left: 50%;
+  transform: translateX(-50%);
+  display: flex;
+  gap: 22px;
+  background: #f8f6efeb;
+  border: 1px solid #d7d7c9;
+  padding: 14px 20px;
+  border-radius: 6px;
+}
+.sector-strip > div {
+  font-size: 8px;
+  letter-spacing: 0.8px;
+  white-space: nowrap;
+  position: relative;
+}
+.sector-dot {
+  display: inline-block;
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  margin-right: 6px;
+  background: #a9a28b;
+}
+.sector-dot.ally {
+  background: #397cac;
+}
+.sector-dot.enemy {
+  background: #c8615a;
+}
+.sector-meter {
+  margin-top: 8px;
+  height: 3px;
+  background: #c8615a55;
+}
+.sector-meter i {
+  display: block;
+  height: 100%;
+  background: #397cac99;
+}
+.tactical-game .scenario-switch {
+  font-size: 10px;
+  padding: 0 10px;
+  background: #f5f3ecdd;
+  border: 1px solid #d7d7c9;
+}
+.utility {
+  gap: 3px;
+}
+.tactical-game button:disabled {
+  opacity: 0.4;
+  cursor: default;
+}
+@media (max-width: 950px) {
+  .sector-strip {
+    bottom: 80px;
+    gap: 10px;
+    padding: 12px;
+  }
+  .sector-strip > div {
+    font-size: 7px;
+    letter-spacing: 0;
+  }
+}
+@media (max-width: 700px) {
+  .squad-list.expanded {
+    top: 160px;
+    gap: 4px;
+  }
+  .squad-list.expanded button {
+    min-height: 30px;
+    padding: 5px;
+    font-size: 10px;
+  }
+  .squad-list.expanded small {
+    display: none;
+  }
+  .sector-strip {
+    max-width: 96vw;
+    flex-wrap: wrap;
+    justify-content: center;
+    bottom: 80px;
+  }
+  .utility {
+    left: 8px;
+  }
+  .map-tools {
+    right: 8px;
+    gap: 3px;
+  }
+}

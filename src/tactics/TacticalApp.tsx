@@ -69,24 +69,35 @@ export default function TacticalApp() {
       <Board key={generation} />
       <header className="tactical-header">
         <div className="brand">
-          MARCHES<span>VALLE CLARO</span>
+          MARCHES
+          <span>
+            {s.scenario === "fronts" ? "ESCENARIO AVANZADO" : "VALLE CLARO"}
+          </span>
         </div>
         <div className="region">
-          {s.battle.raid?.outcome === "protected"
-            ? "ALDEA PROTEGIDA"
-            : s.battle.raid?.outcome === "raided"
-              ? "ALDEA SAQUEADA"
-              : "PROTEGE LA ALDEA"}
-          <span>
-            {s.battle.raid?.outcome === "protected"
-              ? "La patrulla se retira"
+          {s.scenario === "fronts"
+            ? s.battle.sectors?.[4].owner === "ally"
+              ? "REFUERZOS RIVALES CORTADOS"
+              : s.battle.sectors?.[0].owner === "enemy"
+                ? "RECUPERA TU CUARTEL"
+                : "CORTA LOS REFUERZOS RIVALES"
+            : s.battle.raid?.outcome === "protected"
+              ? "ALDEA PROTEGIDA"
               : s.battle.raid?.outcome === "raided"
-                ? "Reinicia para intentarlo de nuevo"
-                : s.battle.raid?.phase === "loot"
-                  ? "Están tomando los suministros"
-                  : s.battle.raid?.phase === "fight"
-                    ? "Combate · sostén la posición"
-                    : "Una patrulla se aproxima"}
+                ? "ALDEA SAQUEADA"
+                : "PROTEGE LA ALDEA"}
+          <span>
+            {s.scenario === "fronts"
+              ? `${s.battle.sectors?.filter((s) => s.owner === "ally").length} / 5 sectores · ${s.battle.squads.length} escuadrones`
+              : s.battle.raid?.outcome === "protected"
+                ? "La patrulla se retira"
+                : s.battle.raid?.outcome === "raided"
+                  ? "Reinicia para intentarlo de nuevo"
+                  : s.battle.raid?.phase === "loot"
+                    ? "Están tomando los suministros"
+                    : s.battle.raid?.phase === "fight"
+                      ? "Combate · sostén la posición"
+                      : "Una patrulla se aproxima"}
           </span>
         </div>
         <div className="clock">
@@ -120,7 +131,9 @@ export default function TacticalApp() {
       <div className="compass" aria-hidden="true">
         N<span>↑</span>
       </div>
-      <div className="squad-list">
+      <div
+        className={`squad-list ${s.scenario === "fronts" ? "expanded" : ""}`}
+      >
         {s.battle.squads.map((u, i) => (
           <button
             key={u.id}
@@ -129,7 +142,9 @@ export default function TacticalApp() {
             onClick={() => s.select(u.id)}
           >
             <Shield size={17} />
-            <span>{i === 0 ? "I" : "II"}</span>
+            <span>
+              {["I", "II", "III", "IV", "V", "VI", "VII", "VIII", "IX"][i]}
+            </span>
             <small>{u.members.length}/6</small>
           </button>
         ))}
@@ -186,8 +201,75 @@ export default function TacticalApp() {
         </section>
       ) : (
         <div className="quiet-hint">
-          Selecciona una tropa · intercepta la patrulla
+          {s.scenario === "fronts"
+            ? ""
+            : "Selecciona una tropa · intercepta la patrulla"}
         </div>
+      )}
+      {s.battle.sectors && !unit && !s.selectedBase && (
+        <div className="sector-strip" aria-label="Control de sectores">
+          {s.battle.sectors.map((sector) => (
+            <div
+              key={sector.id}
+              title={`${sector.name}: ${sector.owner === "ally" ? "aliado" : sector.owner === "enemy" ? "enemigo" : "neutral"}`}
+            >
+              <span className={`sector-dot ${sector.owner}`} />
+              <span>{sector.name}</span>
+              <div className="sector-meter">
+                <i style={{ width: `${(sector.control + 1) * 50}%` }} />
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+      {s.selectedBase && s.battle.bases && (
+        <section className="orders base-orders" aria-label="Cuartel">
+          <div className="unit-title">
+            <strong>
+              {s.selectedBase === "ally"
+                ? "Cuartel del Alba"
+                : "Cuartel Carmesí"}
+            </strong>
+            <span>
+              {s.selectedBase === "ally"
+                ? s.battle.squads.length
+                : s.battle.fronts!.length}{" "}
+              / 9 escuadrones
+            </span>
+          </div>
+          {s.battle.sectors![s.selectedBase === "ally" ? 0 : 4].owner !==
+          s.selectedBase ? (
+            <span>Salidas interrumpidas</span>
+          ) : s.selectedBase === "ally" ? (
+            <button
+              aria-label="Desplegar refuerzos"
+              disabled={
+                s.battle.time < s.battle.bases.allyReady ||
+                s.battle.squads.length >= 9
+              }
+              onClick={() => s.deploy()}
+            >
+              <Plus size={18} />
+              <span>
+                {s.battle.time < s.battle.bases.allyReady
+                  ? `${Math.ceil(s.battle.bases.allyReady - s.battle.time)} s`
+                  : "Desplegar"}
+              </span>
+            </button>
+          ) : (
+            <span className="base-countdown">
+              {s.battle.fronts!.length >= 9
+                ? "Compañía completa"
+                : `Próxima salida · ${Math.max(0, Math.ceil(s.battle.bases.enemyReady - s.battle.time))} s`}
+            </span>
+          )}
+          <button
+            aria-label="Cerrar cuartel"
+            onClick={() => useTactics.setState({ selectedBase: null })}
+          >
+            <X size={17} />
+          </button>
+        </section>
       )}
       {s.orienting && (
         <div className="orientation-hint">
@@ -219,6 +301,26 @@ export default function TacticalApp() {
         </button>
       </div>
       <div className="utility">
+        {s.scenario === "fronts" && (
+          <button
+            aria-label="Abrir cuartel aliado"
+            onClick={() =>
+              useTactics.setState({ selected: null, selectedBase: "ally" })
+            }
+          >
+            <Plus size={17} />
+          </button>
+        )}
+        <button
+          className="scenario-switch"
+          aria-label="Cambiar escenario"
+          onClick={() => {
+            s.switchScenario();
+            setGeneration((g) => g + 1);
+          }}
+        >
+          {s.scenario === "fronts" ? "Ver inicio" : "Tres frentes"}
+        </button>
         <button
           aria-label="Mostrar controles"
           className={help ? "chosen" : ""}

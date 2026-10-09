@@ -94,6 +94,7 @@ test("unreachable destination does not erase current order", () => {
   assert.deepEqual(s.path, path);
 });
 test("pause stops time and movement", () => {
+  useTactics.setState({ scenario: "village" });
   useTactics.getState().reset();
   useTactics.getState().select("s1");
   useTactics.getState().move(125);
@@ -103,6 +104,7 @@ test("pause stops time and movement", () => {
   assert.equal(JSON.stringify(useTactics.getState().battle), old);
 });
 test("orientation issued during movement persists after reaching cell", () => {
+  useTactics.setState({ scenario: "village" });
   useTactics.getState().reset();
   const g = useTactics.getState();
   g.select("s1");
