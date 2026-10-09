@@ -168,16 +168,22 @@ function processCapture(w: World, p: Place, dt: number) {
     }
     p.capture = Math.min(100, p.capture + dt * 8);
     if (p.capture >= 100) {
+      const previousFaction = p.faction;
       p.faction = faction;
       p.capture = 0;
       p.capturing = null;
-      event(
-        w,
-        faction === "ally" ? "Posición asegurada" : "Posición perdida",
-        `${p.name} está bajo control ${faction === "ally" ? "aliado" : "enemigo"}. Su influencia se extenderá por el territorio.`,
-        p.cell,
-        faction === "ally" ? "capture" : "danger",
-      );
+      if (p.discovered || faction === "ally")
+        event(
+          w,
+          faction === "ally"
+            ? "Posición asegurada"
+            : previousFaction === "ally"
+              ? "Posición perdida"
+              : "Avance enemigo",
+          `${p.name} está bajo control ${faction === "ally" ? "aliado" : "enemigo"}. Su influencia se extenderá por el territorio.`,
+          p.cell,
+          faction === "ally" ? "capture" : "danger",
+        );
       if (faction === "enemy" && p.queue.length) {
         event(
           w,
@@ -188,7 +194,7 @@ function processCapture(w: World, p: Place, dt: number) {
         );
         p.queue = [];
       }
-      if (p.id === "bridge" && faction === "ally") w.objectiveComplete = true;
+      if (p.id === "bridge") w.objectiveComplete = faction === "ally";
     }
   } else {
     p.capture = Math.max(0, p.capture - dt * 3);

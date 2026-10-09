@@ -129,3 +129,32 @@ test("influence cannot propagate across impassable river", () => {
   projectInfluence(w, true);
   assert.equal(w.cells[cellId(49, 39)].ally, 0);
 });
+
+test("hidden enemy captures do not leak through the campaign journal", () => {
+  const w = initialWorld();
+  const p = w.places.find((p) => p.id === "forest")!;
+  assert.equal(p.discovered, false);
+  advance(w, 20);
+  assert.equal(p.faction, "enemy");
+  assert.equal(
+    w.events.some((e) => e.cell === p.cell),
+    false,
+  );
+});
+
+test("losing the bridge reopens the active objective", () => {
+  const w = initialWorld();
+  const p = w.places.find((p) => p.id === "bridge")!;
+  p.faction = "ally";
+  w.objectiveComplete = true;
+  const u = w.units.find((u) => u.id === "e1")!;
+  w.units = [u];
+  u.cell = p.cell;
+  u.x = w.cells[p.cell].x;
+  u.y = w.cells[p.cell].y;
+  u.path = [];
+  u.posture = "defend";
+  advance(w, 14);
+  assert.equal(p.faction, "enemy");
+  assert.equal(w.objectiveComplete, false);
+});
