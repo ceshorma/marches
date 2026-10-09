@@ -69,10 +69,23 @@ export default function TacticalApp() {
       <Board key={generation} />
       <header className="tactical-header">
         <div className="brand">
-          MARCHES<span>CAMPO DE MANIOBRAS</span>
+          MARCHES<span>VALLE CLARO</span>
         </div>
         <div className="region">
-          VALLE CLARO<span>01 · Mando y posición</span>
+          {s.battle.raid?.outcome === "protected"
+            ? "ALDEA PROTEGIDA"
+            : s.battle.raid?.outcome === "raided"
+              ? "ALDEA SAQUEADA"
+              : "PROTEGE LA ALDEA"}
+          <span>
+            {s.battle.raid?.outcome === "protected"
+              ? "La patrulla se retira"
+              : s.battle.raid?.outcome === "raided"
+                ? "Reinicia para intentarlo de nuevo"
+                : s.battle.raid?.phase === "loot"
+                  ? "Están tomando los suministros"
+                  : "Una patrulla se aproxima"}
+          </span>
         </div>
         <div className="clock">
           <span>
@@ -163,7 +176,7 @@ export default function TacticalApp() {
         </section>
       ) : (
         <div className="quiet-hint">
-          Selecciona un escuadrón · señala su destino
+          Selecciona una tropa · intercepta la patrulla
         </div>
       )}
       {s.orienting && (

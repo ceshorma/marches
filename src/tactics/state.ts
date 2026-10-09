@@ -19,7 +19,7 @@ type State = {
   reset: () => void;
 };
 export const useTactics = create<State>((set, get) => ({
-  battle: createBattle(),
+  battle: createBattle(true),
   revision: 0,
   selected: null,
   paused: false,
@@ -64,7 +64,7 @@ export const useTactics = create<State>((set, get) => ({
   },
   reset: () =>
     set({
-      battle: createBattle(),
+      battle: createBattle(true),
       selected: null,
       paused: false,
       speed: 1,

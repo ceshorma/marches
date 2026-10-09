@@ -1,6 +1,6 @@
 # MARCHES · Campo de maniobras
 
-Primera entrega del nuevo prototipo: mando de dos escuadrones en un tablero cenital de 18 × 12 hexágonos. React, TypeScript, PixiJS, Zustand y Vite; sin backend ni recursos gráficos externos.
+Prototipo de apertura: protege una aldea aliada de una patrulla visible en un tablero cenital de 18 × 12 hexágonos. React, TypeScript, PixiJS, Zustand y Vite; sin backend ni recursos gráficos externos.
 
 ## Ejecutar
 
@@ -34,7 +34,7 @@ npm run preview
 
 Dos escuadrones con seis integrantes cada uno; composición fija para validar movimiento y orientación. Las rocas bloquean; el bosque y la subida ralentizan. Destinos, celdas ocupadas y siguientes pasos se reservan para impedir solapamientos. Ante un bloqueo dinámico se busca un desvío; si no existe, se espera.
 
-Tres alturas (0, +15, +30), un fuerte, una aldea y una torre. Los edificios son referencias del escenario; no tienen acciones todavía. La partida es un campo de maniobras: aún no incluye enemigo, combate, reclutamiento, captura ni influencia territorial del nuevo diseño.
+Tres alturas (0, +15, +30), un fuerte, una aldea y una torre. Los edificios son referencias del escenario; no tienen acciones todavía. La partida comienza con «Protege la aldea». Una patrulla avanza, toma suministros si llega sin oposición y se retira cuando la presencia aliada acumula suficiente presión. Puedes interceptarla o interrumpir el saqueo. La bandera azul permanece: una incursión no cambia la propiedad. El resultado distingue aldea protegida y saqueada; reiniciar permite repetir la prueba. Este primer enfrentamiento simplificado aún no incluye bajas, ventajas de flanqueo, reclutamiento, captura ni influencia territorial.
 
 ## Organización
 
@@ -43,7 +43,7 @@ Tres alturas (0, +15, +30), un fuerte, una aldea y una torre. Los edificios son 
 - `src/tactics/Board.tsx`: render vectorial PixiJS, cámara y gestos.
 - `src/tactics/TacticalApp.tsx`: controles React y reloj de simulación.
 - `src/tactics/tactics.css`: interfaz responsive.
-- `tests/tactics.test.ts`: diez pruebas de reglas del nuevo modelo.
+- `tests/tactics.test.ts`: trece pruebas de reglas del nuevo modelo y la incursión.
 
 El prototipo anterior se conserva en `src/App.tsx`, `src/Map.tsx`, `src/world.ts`, `src/store.ts` y `src/simulation.ts`; no se carga en la entrada actual. Su documentación está en `README-legacy.md` y sus doce pruebas siguen ejecutándose.
 

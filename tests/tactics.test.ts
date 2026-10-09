@@ -114,3 +114,31 @@ test("orientation issued during movement persists after reaching cell", () => {
   assert.equal(u.path.length, 0);
   assert.ok(Math.abs(Math.cos(u.facing) + 1) < 0.001);
 });
+
+test("opening raid visibly advances and loots if ignored", () => {
+  const b = createBattle(true),
+    start = b.raid!.troop.cell;
+  run(b, 15);
+  assert.notEqual(b.raid!.troop.cell, start);
+  run(b, 45);
+  assert.ok(b.raid!.stolen > 0);
+  assert.equal(b.raid!.outcome, "raided");
+  assert.equal(b.raid!.supplies, 0);
+});
+test("intercepting the patrol protects village and triggers withdrawal", () => {
+  const b = createBattle(true);
+  order(b, "s1", 7 * 18 + 15);
+  run(b, 50);
+  assert.equal(b.raid!.outcome, "protected");
+  assert.equal(b.raid!.stolen, 0);
+  assert.equal(b.raid!.phase, "gone");
+});
+test("defenders can interrupt an ongoing raid", () => {
+  const b = createBattle(true);
+  run(b, 34);
+  assert.ok(b.raid!.stolen > 0);
+  order(b, "s1", 8 * 18 + 13);
+  run(b, 40);
+  assert.equal(b.raid!.outcome, "protected");
+  assert.ok(b.raid!.supplies > 0 && b.raid!.supplies < 100);
+});

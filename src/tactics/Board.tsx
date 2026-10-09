@@ -38,6 +38,7 @@ function soldiers(
   y: number,
   angle: number,
   alpha = 1,
+  color = BLUE,
 ) {
   const c = Math.cos(angle),
     d = Math.sin(angle);
@@ -51,13 +52,13 @@ function soldiers(
       color: 0x344750,
       alpha: 0.13 * alpha,
     });
-    g.circle(px, py, 6).fill({ color: BLUE, alpha });
+    g.circle(px, py, 6).fill({ color, alpha });
     const [hx, hy] = [px + 2 * c, py + 2 * d];
     g.circle(hx, hy, 3).fill({ color: 0xc6c9bd, alpha });
     if (m === "shield") {
       const [sx, sy] = [px + 7 * c, py + 7 * d];
       g.circle(sx, sy, 4)
-        .fill({ color: 0x214d69, alpha })
+        .fill({ color, alpha })
         .stroke({ color: 0xdfdfca, width: 1, alpha });
       const [a, b] = [px - 3 * d, py + 3 * c];
       g.moveTo(a - 9 * c, b - 9 * d)
@@ -79,7 +80,7 @@ function soldiers(
     .lineTo(fx, fy - 12)
     .stroke({ color: INK, width: 1, alpha });
   g.poly([fx, fy - 12, fx + 12, fy - 9, fx, fy - 5]).fill({
-    color: BLUE,
+    color,
     alpha,
   });
 }
@@ -309,13 +310,10 @@ export default function Board() {
         ) {
           lastW = app.screen.width;
           lastH = app.screen.height;
-          fit =
-            lastW < 700
-              ? 0.72
-              : Math.min((lastW - 60) / (DX * 18), (lastH - 140) / (R * 18));
+          fit = Math.min((lastW - 55) / (DX * 8), (lastH - 190) / (R * 12));
           pan = {
-            x: lastW / 2 - DX * (lastW < 700 ? 6.5 : 8.75) * fit * s.zoom,
-            y: lastH / 2 - R * (lastW < 700 ? 10 : 8.3) * fit * s.zoom,
+            x: lastW / 2 - DX * 14.5 * fit * s.zoom,
+            y: lastH / 2 - R * 9.2 * fit * s.zoom,
           };
           lastFocus = s.focus;
           lastZoom = s.zoom;
@@ -432,6 +430,87 @@ export default function Board() {
         transform();
         const s = useTactics.getState();
         overlay.clear();
+        const raid = b.raid,
+          village = b.cells[8 * 18 + 14];
+        if (raid) {
+          const danger =
+            raid.phase === "loot" ||
+            (raid.phase === "approach" &&
+              Math.hypot(
+                squadPosition(b, raid.troop).x - village.x,
+                squadPosition(b, raid.troop).y - village.y,
+              ) <
+                DX * 3);
+          overlay
+            .poly(hex(village.x, village.y, R - 2))
+            .fill({ color: BLUE, alpha: 0.05 })
+            .stroke({ color: BLUE, alpha: 0.4, width: 1.5 });
+          overlay
+            .moveTo(village.x - 22, village.y - 8)
+            .lineTo(village.x - 22, village.y - 37)
+            .stroke({ color: INK, width: 1.5 });
+          overlay
+            .poly([
+              village.x - 22,
+              village.y - 37,
+              village.x - 6,
+              village.y - 32,
+              village.x - 22,
+              village.y - 25,
+            ])
+            .fill(BLUE);
+          if (danger)
+            overlay
+              .circle(village.x, village.y, R + 4 + Math.sin(b.time * 3) * 3)
+              .stroke({
+                color: 0xc8615a,
+                alpha: 0.3 + Math.sin(b.time * 3) * 0.15,
+                width: 2,
+              });
+          if (raid.stolen > 0) {
+            overlay
+              .roundRect(village.x - 24, village.y + 29, 48, 4, 2)
+              .fill(0xd6d0be);
+            overlay
+              .roundRect(
+                village.x - 24,
+                village.y + 29,
+                Math.max(0.1, (48 * raid.supplies) / 100),
+                4,
+                2,
+              )
+              .fill(BLUE);
+          }
+          if (raid.phase !== "gone") {
+            const e = raid.troop,
+              p = squadPosition(b, e);
+            soldiers(overlay, e, p.x, p.y, e.facing, 1, 0xc15c53);
+            let from = p;
+            for (const id of e.path) {
+              const c = b.cells[id],
+                length = Math.hypot(c.x - from.x, c.y - from.y);
+              for (let t = 6; t < length; t += 13)
+                overlay
+                  .circle(
+                    from.x + ((c.x - from.x) * t) / length,
+                    from.y + ((c.y - from.y) * t) / length,
+                    1.8,
+                  )
+                  .fill({ color: 0xc15c53, alpha: 0.6 });
+              from = c;
+            }
+            if (raid.pressure > 0 && raid.phase !== "retreat")
+              overlay
+                .arc(
+                  p.x,
+                  p.y,
+                  R - 3,
+                  -Math.PI / 2,
+                  -Math.PI / 2 + raid.pressure * Math.PI * 2,
+                )
+                .stroke({ color: BLUE, width: 3 });
+          }
+        }
         const selected = b.squads.find((u) => u.id === s.selected);
         if (selected) {
           const at = squadPosition(b, selected);

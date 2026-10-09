@@ -325,3 +325,23 @@ button:focus-visible {
     bottom: 20px;
   }
 }
+
+/* The objective remains readable on narrow screens. */
+@media (max-width: 700px) {
+  .region {
+    display: block;
+    position: absolute;
+    top: 90px;
+    left: 0;
+    right: 0;
+    font-size: 12px;
+    letter-spacing: 2px;
+  }
+  .region span {
+    font-size: 10px;
+    margin-top: 7px;
+  }
+  .squad-list {
+    top: 155px;
+  }
+}

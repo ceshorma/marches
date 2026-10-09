@@ -24,7 +24,25 @@ export type Squad = {
   hold: boolean;
   pendingFacing?: number;
 };
-export type Battle = { cells: Cell[]; squads: Squad[]; time: number };
+export type Raid = {
+  troop: Squad;
+  phase: "approach" | "loot" | "retreat" | "gone";
+  pressure: number;
+  supplies: number;
+  stolen: number;
+  outcome: "active" | "protected" | "raided";
+  resolvedAt: number;
+};
+export type Battle = {
+  cells: Cell[];
+  squads: Squad[];
+  time: number;
+  raid?: Raid;
+};
+export const allTroops = (b: Battle) => [
+  ...b.squads,
+  ...(b.raid && b.raid.phase !== "gone" ? [b.raid.troop] : []),
+];
 export const adjacent = (id: number) => {
   const q = id % COLS,
     r = Math.floor(id / COLS);
@@ -40,7 +58,7 @@ export const adjacent = (id: number) => {
     .filter(([a, b]) => a >= 0 && a < COLS && b >= 0 && b < ROWS)
     .map(([a, b]) => b * COLS + a);
 };
-export function createBattle(): Battle {
+export function createBattle(mission = false): Battle {
   const cells: Cell[] = Array.from({ length: COLS * ROWS }, (_, id) => {
     const q = id % COLS,
       r = Math.floor(id / COLS),
@@ -93,13 +111,43 @@ export function createBattle(): Battle {
     },
   ];
   squads.forEach((s) => (cells[s.cell].terrain = "plain"));
-  return { cells, squads, time: 0 };
+  const battle: Battle = { cells, squads, time: 0 };
+  if (mission) {
+    squads[0].cell = 8 * COLS + 12;
+    squads[1].cell = 9 * COLS + 12;
+    squads.forEach((s) => (cells[s.cell].terrain = "plain"));
+    // A clear approach gives the player time to read and respond.
+    for (let r = 3; r <= 8; r++)
+      for (let q = 14; q <= 17; q++) cells[r * COLS + q].terrain = "plain";
+    const troop: Squad = {
+      id: "raiders",
+      name: "Patrulla enemiga",
+      cell: 3 * COLS + 17,
+      facing: Math.PI / 2,
+      targetFacing: Math.PI / 2,
+      members: ["shield", "shield", "shield", "bow"],
+      path: [],
+      progress: 0,
+      hold: false,
+    };
+    battle.raid = {
+      troop,
+      phase: "approach",
+      pressure: 0,
+      supplies: 100,
+      stolen: 0,
+      outcome: "active",
+      resolvedAt: 0,
+    };
+    troop.path = route(battle, troop, 8 * COLS + 14);
+  }
+  return battle;
 }
 export function blocked(b: Battle, id: number, squad: string) {
   return (
     !b.cells[id] ||
     b.cells[id].terrain === "rock" ||
-    b.squads.some(
+    allTroops(b).some(
       (s) =>
         s.id !== squad &&
         (s.cell === id || s.path[0] === id || s.path.at(-1) === id),
@@ -162,6 +210,7 @@ export function hold(s: Squad) {
 }
 export function advance(b: Battle, dt: number) {
   b.time += dt;
+  advanceRaid(b, dt);
   for (const s of b.squads) {
     let delta =
       ((s.targetFacing - s.facing + Math.PI * 3) % (Math.PI * 2)) - Math.PI;
@@ -169,7 +218,7 @@ export function advance(b: Battle, dt: number) {
     if (!s.path.length) continue;
     const next = s.path[0];
     if (
-      b.squads.some(
+      allTroops(b).some(
         (o) =>
           o.id !== s.id &&
           (o.cell === next || (o.progress > 0 && o.path[0] === next)),
@@ -207,4 +256,75 @@ export function squadPosition(b: Battle, s: Squad) {
     x: a.x + (c.x - a.x) * s.progress,
     y: a.y + (c.y - a.y) * s.progress,
   };
+}
+
+// The opening raid is a reversible threat, not automatic conquest.
+export function advanceRaid(b: Battle, dt: number) {
+  const r = b.raid;
+  if (!r || r.phase === "gone") return;
+  const e = r.troop,
+    at = squadPosition(b, e);
+  const defenders = b.squads.filter((s) => {
+    const p = squadPosition(b, s);
+    return Math.hypot(p.x - at.x, p.y - at.y) < DX * 1.65;
+  });
+  if (r.phase !== "retreat") {
+    r.pressure = Math.max(
+      0,
+      Math.min(
+        1,
+        r.pressure + dt * (defenders.length ? defenders.length / 4 : -0.12),
+      ),
+    );
+    if (r.pressure >= 1 || r.supplies <= 0) {
+      r.phase = "retreat";
+      r.outcome = r.supplies > 0 ? "protected" : "raided";
+      r.resolvedAt = b.time;
+      const p = route(b, e, 3 * COLS + 17);
+      e.path = e.progress > 0 ? [e.path[0], ...p] : p;
+      if (!e.path.length && e.cell === 3 * COLS + 17) r.phase = "gone";
+    }
+  }
+  if (r.phase === "loot" && !defenders.length) {
+    const take = Math.min(r.supplies, dt * 4);
+    r.supplies -= take;
+    r.stolen += take;
+  }
+  if (r.phase === "approach" && e.cell === 8 * COLS + 14 && !e.path.length)
+    r.phase = "loot";
+  if (defenders.length && r.phase !== "retreat") return;
+  if (!e.path.length) {
+    if (r.phase === "retreat") {
+      if (e.cell === 3 * COLS + 17) {
+        r.phase = "gone";
+        return;
+      }
+      e.path = route(b, e, 3 * COLS + 17);
+    } else if (r.phase === "approach") e.path = route(b, e, 8 * COLS + 14);
+  }
+  if (!e.path.length) return;
+  const next = e.path[0];
+  if (
+    b.squads.some(
+      (s) => s.cell === next || (s.progress > 0 && s.path[0] === next),
+    )
+  ) {
+    if (!e.progress)
+      e.path = route(
+        b,
+        e,
+        r.phase === "retreat" ? 3 * COLS + 17 : 8 * COLS + 14,
+      );
+    return;
+  }
+  const a = b.cells[e.cell],
+    c = b.cells[next];
+  e.targetFacing = Math.atan2(c.y - a.y, c.x - a.x);
+  e.facing = e.targetFacing;
+  e.progress += dt / (r.phase === "retreat" ? 2 : 4.5);
+  if (e.progress >= 1) {
+    e.cell = next;
+    e.path.shift();
+    e.progress = 0;
+  }
 }
