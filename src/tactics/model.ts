@@ -1,3 +1,5 @@
+import { attackDamage } from "./combat";
+import type { TroopType } from "./combat";
 import { advanceFronts } from "./fronts";
 export const COLS = 18,
   ROWS = 12,
@@ -19,7 +21,7 @@ export type Squad = {
   cell: number;
   facing: number;
   targetFacing: number;
-  members: ("shield" | "bow")[];
+  members: TroopType[];
   path: number[];
   progress: number;
   hold: boolean;
@@ -331,7 +333,10 @@ export function advanceRaid(b: Battle, dt: number) {
     damage: number,
     enemy: boolean,
   ) => {
-    target.cohesion = Math.max(0, (target.cohesion ?? 100) - damage);
+    target.cohesion = Math.max(
+      0,
+      (target.cohesion ?? 100) - attackDamage(source, target, damage),
+    );
     target.lastHit = b.time;
     const p = squadPosition(b, source),
       t = squadPosition(b, target);

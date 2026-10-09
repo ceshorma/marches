@@ -1,3 +1,5 @@
+import { attackDamage } from "./combat";
+import type { TroopType } from "./combat";
 import {
   createBattle,
   adjacent,
@@ -102,6 +104,11 @@ export function createFrontsBattle(): Battle {
     squad("s6", "Escuadrón VI", at(6, 8), 3),
     squad("s7", "Escuadrón VII", at(4, 7)),
   ];
+  // Distinct roles are visible in the already-running scenario.
+  b.squads[0].members = Array(6).fill("bow");
+  b.squads[1].members = Array(6).fill("shield");
+  b.squads[3].members = Array(6).fill("horse");
+  b.squads[4].members = Array(6).fill("horse");
   b.fronts = [
     {
       troop: squad("n1", "Columna norte", at(11, 2)),
@@ -140,6 +147,12 @@ export function createFrontsBattle(): Battle {
       rethink: 4,
     },
   ];
+  b.fronts[0].troop.members = Array(6).fill("horse");
+  b.fronts[1].troop.members = Array(6).fill("shield");
+  b.fronts[2].troop.members = Array(6).fill("shield");
+  b.fronts[3].troop.members = Array(6).fill("bow");
+  b.fronts[4].troop.members = Array(6).fill("shield");
+  b.fronts[5].troop.members = Array(6).fill("horse");
   allTroops(b).forEach((s) => (b.cells[s.cell].terrain = "plain"));
   b.sectorCells = b.cells.map((c) => {
     let result = 0,
@@ -262,7 +275,10 @@ export function advanceFronts(b: Battle, dt: number) {
   for (const { source, target, enemy } of attacks) {
     const p = squadPosition(b, source),
       t = squadPosition(b, target);
-    target.cohesion = Math.max(0, target.cohesion! - 6);
+    target.cohesion = Math.max(
+      0,
+      target.cohesion! - attackDamage(source, target),
+    );
     target.lastHit = b.time;
     source.cooldown = 1.5;
     b.strikes!.push({ x: p.x, y: p.y, tx: t.x, ty: t.y, time: b.time, enemy });
@@ -388,7 +404,11 @@ export function updateControl(b: Battle, dt: number) {
   }
 }
 
-export function spawnReinforcement(b: Battle, enemy = false): string | null {
+export function spawnReinforcement(
+  b: Battle,
+  enemy = false,
+  type: TroopType = "shield",
+): string | null {
   if (!b.bases || !b.sectors) return "No hay cuartel disponible";
   const base = b.sectors[enemy ? 4 : 0],
     faction = enemy ? "enemy" : "ally",
@@ -409,6 +429,11 @@ export function spawnReinforcement(b: Battle, enemy = false): string | null {
       ? "Refuerzo Carmesí"
       : `Escuadrón ${["I", "II", "III", "IV", "V", "VI", "VII", "VIII", "IX"][b.squads.length]}`,
     id,
+  );
+  u.members = Array(6).fill(
+    enemy
+      ? (["shield", "bow", "horse"] as TroopType[])[b.bases.sequence % 3]
+      : type,
   );
   if (enemy) {
     const target = ["north", "center", "south"][(b.fronts!.length - 6) % 3];

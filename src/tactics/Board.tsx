@@ -52,6 +52,37 @@ function soldiers(
       (i < 3 ? 10 : -10) + Math.sin(i * 7) * disorder * 6,
       ((i % 3) - 1) * 16 + Math.cos(i * 4) * disorder * 5,
     );
+    if (m === "horse") {
+      const foot = (a: number, b: number) => [
+        px + a * c - b * d,
+        py + a * d + b * c,
+      ];
+      const points = [
+        [-10, -5],
+        [5, -5],
+        [9, -3],
+        [12, -3],
+        [12, 3],
+        [7, 5],
+        [-8, 5],
+      ]
+        .map(([a, b]) => foot(a, b))
+        .flat();
+      g.poly(points).fill({ color: 0x76654f, alpha });
+      for (const a of [-6, 5]) {
+        const [x1, y1] = foot(a, -7),
+          [x2, y2] = foot(a, 7);
+        g.moveTo(x1, y1)
+          .lineTo(x2, y2)
+          .stroke({ color: 0x50493c, width: 2, alpha });
+      }
+      g.circle(px, py, 4.7).fill({ color, alpha });
+      g.circle(px + c, py + d, 2.5).fill({ color: 0xd2d1bd, alpha });
+      const [x1, y1] = foot(-4, -4),
+        [x2, y2] = foot(15, -4);
+      g.moveTo(x1, y1).lineTo(x2, y2).stroke({ color: INK, width: 1, alpha });
+      return;
+    }
     g.ellipse(px + 1, py + 3, 7, 5).fill({
       color: 0x344750,
       alpha: 0.13 * alpha,
@@ -583,6 +614,7 @@ export default function Board() {
                   Math.min(1, 1 - (ready - b.time) / duration),
                 );
                 overlay
+                  .moveTo(c.x, c.y - (R - 3))
                   .arc(
                     c.x,
                     c.y,

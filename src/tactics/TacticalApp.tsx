@@ -1,3 +1,5 @@
+import { composition, matchup, troopTypes, troopNames } from "./combat";
+import type { TroopType } from "./combat";
 import { useEffect, useState } from "react";
 import {
   Pause,
@@ -17,7 +19,8 @@ import "./tactics.css";
 export default function TacticalApp() {
   const s = useTactics(),
     [generation, setGeneration] = useState(0),
-    [help, setHelp] = useState(false);
+    [help, setHelp] = useState(false),
+    [recruitType, setRecruitType] = useState<TroopType>("shield");
   const unit = s.battle.squads.find((u) => u.id === s.selected);
   useEffect(() => {
     let last = performance.now(),
@@ -159,10 +162,48 @@ export default function TacticalApp() {
                 {Math.ceil(unit.cohesion ?? 100)}%
               </span>
             )}
-            <span>
-              {unit.members.filter((m) => m === "shield").length} infantería ·{" "}
-              {unit.members.filter((m) => m === "bow").length} arqueros
-            </span>
+            <span>{composition(unit)}</span>
+          </div>
+          <div className="matchups" aria-label="Afinidades de daño a cohesión">
+            <small>Daño a cohesión</small>
+            <div className="matchup-head">
+              <span>Contra</span>
+              <span>Inflige</span>
+              <span>Recibe</span>
+            </div>
+            {troopTypes.map((t) => {
+              const outgoing = matchup(unit.members, [t]),
+                incoming = matchup([t], unit.members);
+              return (
+                <div key={t} className="matchup-row">
+                  <span>{troopNames[t]}</span>
+                  <b
+                    className={
+                      outgoing > 1
+                        ? "favorable"
+                        : outgoing < 1
+                          ? "unfavorable"
+                          : ""
+                    }
+                  >
+                    {Math.round((outgoing - 1) * 100) > 0 ? "+" : ""}
+                    {Math.round((outgoing - 1) * 100)}%
+                  </b>
+                  <b
+                    className={
+                      incoming > 1
+                        ? "unfavorable"
+                        : incoming < 1
+                          ? "favorable"
+                          : ""
+                    }
+                  >
+                    {Math.round((incoming - 1) * 100) > 0 ? "+" : ""}
+                    {Math.round((incoming - 1) * 100)}%
+                  </b>
+                </div>
+              );
+            })}
           </div>
           <div
             className="mini-formation"
@@ -241,21 +282,35 @@ export default function TacticalApp() {
           s.selectedBase ? (
             <span>Salidas interrumpidas</span>
           ) : s.selectedBase === "ally" ? (
-            <button
-              aria-label="Desplegar refuerzos"
-              disabled={
-                s.battle.time < s.battle.bases.allyReady ||
-                s.battle.squads.length >= 9
-              }
-              onClick={() => s.deploy()}
-            >
-              <Plus size={18} />
-              <span>
-                {s.battle.time < s.battle.bases.allyReady
-                  ? `${Math.ceil(s.battle.bases.allyReady - s.battle.time)} s`
-                  : "Desplegar"}
-              </span>
-            </button>
+            <>
+              <div className="recruit-types" aria-label="Tipo de refuerzo">
+                {troopTypes.map((t) => (
+                  <button
+                    key={t}
+                    aria-pressed={recruitType === t}
+                    onClick={() => setRecruitType(t)}
+                    className={recruitType === t ? "chosen" : ""}
+                  >
+                    {troopNames[t]}
+                  </button>
+                ))}
+              </div>
+              <button
+                aria-label="Desplegar refuerzos"
+                disabled={
+                  s.battle.time < s.battle.bases.allyReady ||
+                  s.battle.squads.length >= 9
+                }
+                onClick={() => s.deploy(recruitType)}
+              >
+                <Plus size={18} />
+                <span>
+                  {s.battle.time < s.battle.bases.allyReady
+                    ? `${Math.ceil(s.battle.bases.allyReady - s.battle.time)} s`
+                    : "Desplegar"}
+                </span>
+              </button>
+            </>
           ) : (
             <span className="base-countdown">
               {s.battle.fronts!.length >= 9

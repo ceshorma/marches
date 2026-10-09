@@ -70,3 +70,7 @@ El prototipo anterior se conserva en `src/App.tsx`, `src/Map.tsx`, `src/world.ts
 3. Control persistente, presión militar transitoria, captura y ventajas de altura/frente/flanqueo.
 
 Antes de ampliar el sistema, revisar tamaño de celda, lectura de composición y facilidad de orientación jugando con esta entrega.
+
+## Tres tipos y afinidades de daño
+
+Lanceros superan a caballería; caballería supera a arqueros; arqueros superan a lanceros. Cada ventaja aplica ×1,5 al daño a cohesión, el enfrentamiento desfavorable ×0,65 y el mismo tipo ×1. Las mezclas ponderan cada combinación por la proporción de integrantes; menos soldados infligen menos daño total. El panel de selección muestra las modificaciones a daño infligido y recibido frente a cada tipo puro. El cuartel permite elegir cuál desplegar. Esta iteración modifica daño y representación; alcance específico, carga y bonificaciones por flanqueo siguen pendientes.

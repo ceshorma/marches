@@ -183,7 +183,7 @@ test("withdrawing defenders lets enemy resume its objective", () => {
 });
 test("a broken allied squad retreats and recovers, without permanent casualties", () => {
   const b = contact();
-  b.squads[0].cohesion = 4;
+  b.squads[0].cohesion = 1;
   run(b, 0.1);
   assert.equal(b.squads[0].routing, true);
   assert.ok(order(b, "s1", 140));

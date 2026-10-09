@@ -1,3 +1,4 @@
+import type { TroopType } from "./combat";
 import { createFrontsBattle, spawnReinforcement } from "./fronts";
 import { create } from "zustand";
 import { createBattle, advance, order, hold } from "./model";
@@ -7,7 +8,7 @@ type State = {
   revision: number;
   selected: string | null;
   selectedBase: "ally" | "enemy" | null;
-  deploy: () => void;
+  deploy: (type?: TroopType) => void;
   paused: boolean;
   speed: number;
   zoom: number;
@@ -38,9 +39,9 @@ export const useTactics = create<State>((set, get) => ({
   message: null,
   select: (selected) =>
     set({ selected, selectedBase: null, orienting: false, message: null }),
-  deploy: () => {
+  deploy: (type = "shield") => {
     const s = get();
-    const message = spawnReinforcement(s.battle);
+    const message = spawnReinforcement(s.battle, false, type);
     set({ message, revision: s.revision + 1 });
   },
   move: (cell) => {

@@ -445,3 +445,79 @@ button:focus-visible {
     gap: 3px;
   }
 }
+.matchups {
+  border-left: 1px solid #d7d7c9;
+  padding-left: 12px;
+  min-width: 177px;
+}
+.matchups small {
+  font-size: 9px;
+  color: #899280;
+  display: block;
+  margin-bottom: 5px;
+}
+.matchup-row,
+.matchup-head {
+  display: grid;
+  grid-template-columns: 75px 43px 43px;
+  gap: 3px;
+  font-size: 9px;
+  margin-top: 4px;
+}
+.matchup-head {
+  color: #91988b;
+  font-size: 8px;
+}
+.matchup-row b {
+  font-weight: 500;
+}
+.favorable {
+  color: #397cac;
+}
+.unfavorable {
+  color: #b75850;
+}
+.mini-formation .horse {
+  border-radius: 1px;
+  transform: rotate(45deg);
+  background: #76654f;
+}
+.recruit-types {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.recruit-types button {
+  font-size: 10px;
+  min-height: 26px !important;
+  padding: 3px 9px !important;
+}
+.orders:has(.matchups) {
+  gap: 11px;
+}
+.orders:has(.matchups) .mini-formation {
+  display: none;
+}
+@media (max-width: 700px) {
+  .orders:has(.matchups) {
+    flex-wrap: wrap;
+    justify-content: center;
+    width: 95vw;
+    gap: 8px;
+  }
+  .orders:has(.matchups) .unit-title {
+    min-width: 100%;
+    text-align: center;
+  }
+  .matchups {
+    border-left: 0;
+    padding-left: 0;
+  }
+  .matchup-row,
+  .matchup-head {
+    font-size: 8px;
+  }
+  .unit-title span {
+    white-space: normal;
+  }
+}
