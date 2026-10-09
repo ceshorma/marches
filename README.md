@@ -1,8 +1,8 @@
-# MARCHES
+# MARCHES · Campo de maniobras
 
-Prototipo táctico en React, TypeScript, Vite, PixiJS y Zustand. Sin backend, cuentas ni assets externos.
+Primera entrega del nuevo prototipo: mando de dos escuadrones en un tablero cenital de 18 × 12 hexágonos. React, TypeScript, PixiJS, Zustand y Vite; sin backend ni recursos gráficos externos.
 
-## Iniciar
+## Ejecutar
 
 Node.js 20.19+ o 22.12+.
 
@@ -11,7 +11,7 @@ npm install
 npm run dev
 ```
 
-Abre http://localhost:5173, o la dirección que indique Vite.
+Abrir http://localhost:5173. Para validar y compilar:
 
 ```bash
 npm test
@@ -19,38 +19,37 @@ npm run build
 npm run preview
 ```
 
-## Un comienzo pequeño
+## Interacción
 
-La expedición comienza con un fuerte, una unidad, 35 de oro y un pequeño territorio conocido. Una aldea cercana ofrece la primera expansión. El resto del mundo continúa su simulación, oculto hasta explorarlo.
+- Seleccionar un escuadrón y pulsar una celda, o arrastrarlo al destino.
+- La formación completa ocupa una celda. La punta azul indica el frente; escudos y lanzas están delante, arcos detrás.
+- Orientar (R): pulsar una dirección del mapa. La formación gira gradualmente.
+- Mantener: detiene las órdenes, terminando primero el paso en curso.
+- Es posible cambiar destino en marcha. El nuevo recorrido empieza al finalizar el paso actual, sin saltos.
+- Arrastrar terreno desplaza la cámara. Rueda y botones +/− hacen zoom.
+- Espacio pausa; 1, 2 y 4 cambian velocidad; H encuadra el mapa; Escape cierra selección.
+- En móvil se muestra un sector ampliado para poder tocar las tropas; arrastrar terreno permite recorrer el tablero.
 
-- Arrastra la unidad hacia un destino: aparece su recorrido y empieza a caminar.
-- También puedes seleccionar la unidad y pulsar un destino.
-- Arrastra el terreno para mover la cámara; rueda o +/− para acercarte.
-- Mantener una unidad junto a una posición neutral durante unos 13 segundos la captura si no hay enemigos cerca. El anillo indica el progreso.
-- La primera captura de cada posición aporta 45 de oro y extiende la influencia.
-- Selecciona el fuerte para reclutar. Empiezas con infantería; dos posiciones aliadas habilitan arqueros y tres, caballería.
-- La barra de compañía aparece al tener más de una unidad. Las posturas se muestran cuando crecen la compañía o el territorio.
-- Espacio pausa o reanuda; H centra la compañía; 1, 2 y 4 cambian la velocidad. Escape cierra la selección.
-- El menú de tres puntos contiene los gestos, la capa de influencia y el reinicio.
+## Reglas de esta entrega
 
-No hay misión escrita, panel lateral permanente ni diario abierto por defecto. Descubrimientos, capturas y amenazas se muestran principalmente mediante cambios en el mapa; la campana conserva un registro opcional de acontecimientos.
+Dos escuadrones con seis integrantes cada uno; composición fija para validar movimiento y orientación. Las rocas bloquean; el bosque y la subida ralentizan. Destinos, celdas ocupadas y siguientes pasos se reservan para impedir solapamientos. Ante un bloqueo dinámico se busca un desvío; si no existe, se espera.
 
-## Sistemas
+Tres alturas (0, +15, +30), un fuerte, una aldea y una torre. Los edificios son referencias del escenario; no tienen acciones todavía. La partida es un campo de maniobras: aún no incluye enemigo, combate, reclutamiento, captura ni influencia territorial del nuevo diseño.
 
-Mundo determinista de 50 × 40 hexágonos, semilla 24300, cinco regiones. Una sola cámara con zoom continuo, agregación de destacamentos a distancia y grilla táctica al acercarse. Movimiento A*, terreno infranqueable y caminos; exploración permanente; influencia gradual con resistencia por terreno; patrullas, combate automático, cobertura, guarniciones, posturas, capturas y reclutamiento secuencial.
+## Organización
 
-La simulación avanza en pasos fijos de 100 ms. Un día equivale a 60 segundos. Las posiciones aliadas aportan oro cada 30 segundos. Las provisiones permanecen como dato interno del prototipo, sin interfaz ni gasto.
+- `src/tactics/model.ts`: escenario determinista, rutas, ocupación y simulación a pasos fijos.
+- `src/tactics/state.ts`: selección, órdenes y estado de interfaz.
+- `src/tactics/Board.tsx`: render vectorial PixiJS, cámara y gestos.
+- `src/tactics/TacticalApp.tsx`: controles React y reloj de simulación.
+- `src/tactics/tactics.css`: interfaz responsive.
+- `tests/tactics.test.ts`: diez pruebas de reglas del nuevo modelo.
 
-## Código
+El prototipo anterior se conserva en `src/App.tsx`, `src/Map.tsx`, `src/world.ts`, `src/store.ts` y `src/simulation.ts`; no se carga en la entrada actual. Su documentación está en `README-legacy.md` y sus doce pruebas siguen ejecutándose.
 
-- `src/world.ts`: generación, tipos, geometría y rutas.
-- `src/simulation.ts`: reglas, avance temporal y progresión.
-- `src/store.ts`: estado y comandos.
-- `src/Map.tsx`: PixiJS, cámara y gestos directos.
-- `src/App.tsx`: controles contextuales y HUD reducido.
-- `src/style.css`: presentación adaptable.
-- `tests/simulation.test.ts`: determinismo, reglas y progresión inicial.
+## Próximas entregas
 
-## Límites
+2. Preparación en celdas del fuerte, composición y coste, despliegue temporizado, incursiones y saqueo con retirada.
+3. Control persistente, presión militar transitoria, captura y ventajas de altura/frente/flanqueo.
 
-Partida en memoria: recargar la reinicia. Requiere WebGL; el zoom táctil utiliza botones. Las unidades pueden compartir hexágono. Combate y economía son sencillos; no hay inventarios, habilidades ni multijugador. La exploración revela terreno permanentemente, sin visibilidad táctica transitoria.
+Antes de ampliar el sistema, revisar tamaño de celda, lectura de composición y facilidad de orientación jugando con esta entrega.

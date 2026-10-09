@@ -1,0 +1,327 @@
+:root {
+  font-family: Arial, sans-serif;
+  color: #344750;
+  background: #f5f3ec;
+  font-synthesis: none;
+}
+* {
+  box-sizing: border-box;
+}
+body {
+  margin: 0;
+}
+button {
+  font: inherit;
+  color: inherit;
+  cursor: pointer;
+}
+button:focus-visible {
+  outline: 2px solid #397cac;
+  outline-offset: 4px;
+}
+.tactical-game {
+  position: relative;
+  width: 100%;
+  height: 100dvh;
+  min-height: 400px;
+  overflow: hidden;
+  background: #f5f3ec;
+}
+.tactical-canvas {
+  position: absolute;
+  inset: 0;
+  touch-action: none;
+}
+.tactical-canvas canvas {
+  display: block;
+}
+.tactical-header {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  padding: 25px 30px;
+  pointer-events: none;
+  background: linear-gradient(#f5f3ec 55%, transparent);
+}
+.brand {
+  font-family: Georgia, serif;
+  font-size: 23px;
+  letter-spacing: 6px;
+}
+.brand:after {
+  content: "";
+  display: block;
+  width: 44px;
+  margin-top: 14px;
+  border-bottom: 1px solid #52636a;
+}
+.brand span {
+  display: block;
+  font: 8px Arial;
+  letter-spacing: 2px;
+  margin-top: 9px;
+  color: #8c9187;
+}
+.region {
+  text-align: center;
+  font: 12px Georgia;
+  letter-spacing: 5px;
+  padding-top: 3px;
+}
+.region span {
+  display: block;
+  font: 10px Arial;
+  letter-spacing: 1px;
+  margin-top: 12px;
+  color: #969a8e;
+}
+.clock {
+  display: flex;
+  align-items: center;
+  gap: 15px;
+  font-size: 12px;
+  pointer-events: auto;
+}
+.clock > span {
+  font-variant-numeric: tabular-nums;
+  color: #898e85;
+}
+.tactical-game button {
+  border: 1px solid transparent;
+  background: transparent;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  border-radius: 5px;
+  min-width: 36px;
+  min-height: 36px;
+}
+.tactical-game button:hover {
+  background: #e5e6da;
+}
+.clock button:last-child {
+  border: 1px solid #89958e;
+  border-radius: 50%;
+  width: 39px;
+  height: 39px;
+}
+.compass {
+  position: absolute;
+  left: 34px;
+  top: 140px;
+  text-align: center;
+  color: #8f9787;
+  font: 10px Georgia;
+}
+.compass span {
+  display: block;
+  font-size: 30px;
+}
+.squad-list {
+  position: absolute;
+  left: 26px;
+  top: 45%;
+  display: flex;
+  flex-direction: column;
+  gap: 9px;
+}
+.squad-list button {
+  padding: 12px;
+  background: #f5f3ece8;
+  border: 1px solid #d3d5c6;
+  border-radius: 4px;
+  color: #397cac;
+}
+.squad-list small {
+  font-size: 10px;
+  color: #91988b;
+}
+.tactical-game .chosen {
+  background: #dce5e3;
+  border-color: #8aa9b1;
+}
+.orders {
+  position: absolute;
+  bottom: 27px;
+  left: 50%;
+  transform: translateX(-50%);
+  display: flex;
+  align-items: center;
+  gap: 15px;
+  background: #f8f6efed;
+  border: 1px solid #d7d7c9;
+  padding: 14px 17px;
+  border-radius: 7px;
+  box-shadow: 0 6px 24px #34475009;
+}
+.unit-title {
+  min-width: 140px;
+}
+.unit-title strong {
+  font: 17px Georgia;
+}
+.unit-title span {
+  display: block;
+  font-size: 10px;
+  color: #879181;
+  margin-top: 7px;
+  white-space: nowrap;
+}
+.orders button {
+  flex-direction: column;
+  padding: 8px;
+}
+.orders button span {
+  font-size: 9px;
+}
+.orders button:last-child {
+  padding: 0;
+}
+.mini-formation {
+  display: grid;
+  grid-template-columns: repeat(2, 8px);
+  grid-template-rows: repeat(3, 8px);
+  gap: 4px;
+  padding: 6px 18px;
+  border-left: 1px solid #dadccd;
+  border-right: 1px solid #dadccd;
+}
+.mini-formation i {
+  display: block;
+  background: #397cac;
+  border-radius: 2px;
+}
+.mini-formation .bow {
+  background: transparent;
+  border: 2px solid #397cac;
+  border-radius: 50%;
+}
+.quiet-hint {
+  position: absolute;
+  bottom: 38px;
+  left: 50%;
+  transform: translateX(-50%);
+  font-size: 11px;
+  color: #8a9386;
+  white-space: nowrap;
+}
+.map-tools {
+  position: absolute;
+  bottom: 28px;
+  right: 28px;
+  display: flex;
+  gap: 7px;
+}
+.map-tools button {
+  border: 1px solid #8c9992;
+  border-radius: 50%;
+  background: #f5f3ece8;
+  width: 37px;
+  height: 37px;
+}
+.utility {
+  position: absolute;
+  bottom: 28px;
+  left: 25px;
+  display: flex;
+  gap: 5px;
+  color: #7d8b81;
+}
+.controls {
+  position: absolute;
+  bottom: 80px;
+  left: 25px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding: 20px;
+  background: #f8f6eff5;
+  border: 1px solid #d7d7c9;
+  border-radius: 6px;
+  font-size: 11px;
+}
+.orientation-hint,
+.tactical-toast {
+  position: absolute;
+  left: 50%;
+  transform: translateX(-50%);
+  bottom: 130px;
+  background: #f8f6eff5;
+  padding: 12px 18px;
+  border: 1px solid #d7d7c9;
+  border-radius: 4px;
+  font-size: 12px;
+}
+.orientation-hint span {
+  margin-left: 12px;
+  color: #91988b;
+  font-size: 10px;
+}
+.tactical-toast {
+  bottom: 180px;
+  color: #aa5e50;
+}
+@media (max-width: 700px) {
+  .tactical-header {
+    padding: 18px;
+  }
+  .brand {
+    font-size: 18px;
+    letter-spacing: 4px;
+  }
+  .region {
+    display: none;
+  }
+  .clock {
+    gap: 5px;
+  }
+  .orders {
+    bottom: 85px;
+    padding: 9px;
+    gap: 5px;
+    max-width: 96vw;
+  }
+  .unit-title {
+    min-width: 110px;
+  }
+  .unit-title strong {
+    font-size: 14px;
+  }
+  .unit-title span {
+    font-size: 9px;
+  }
+  .mini-formation {
+    padding: 6px 9px;
+  }
+  .squad-list {
+    left: 12px;
+    top: 130px;
+  }
+  .squad-list button {
+    padding: 8px;
+  }
+  .compass {
+    display: none;
+  }
+  .quiet-hint {
+    bottom: 90px;
+    font-size: 10px;
+  }
+  .orientation-hint {
+    bottom: 175px;
+    white-space: nowrap;
+  }
+  .map-tools {
+    right: 18px;
+    bottom: 20px;
+  }
+  .utility {
+    left: 16px;
+    bottom: 20px;
+  }
+}
