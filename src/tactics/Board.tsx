@@ -1,6 +1,6 @@
 import { troopTypes, troopNames } from "./combat";
 import { outpostInfluence, deploymentError } from "./outpost";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef } from "react";
 import { Application, Container, Graphics, Text } from "pixi.js";
 import { useTactics } from "./state";
 import { R, DX, route, squadPosition, adjacent } from "./model";
@@ -128,10 +128,7 @@ export default function Board() {
   const ref = useRef<HTMLDivElement>(null),
     menuRef = useRef<HTMLDivElement>(null);
   const game = useTactics();
-  const [pickerOpen, setPickerOpen] = useState(false);
-  useEffect(() => {
-    if (game.deployCell === null) setPickerOpen(false);
-  }, [game.deployCell]);
+
   useEffect(() => {
     let dead = false;
     const app = new Application();
@@ -491,6 +488,7 @@ export default function Board() {
         });
       const pointerDown = (e: PointerEvent) => {
         if (e.button !== 0) return;
+        canvas.style.cursor = "grabbing";
         const p = local(e),
           u = hit(p);
         down = {
@@ -505,6 +503,15 @@ export default function Board() {
       };
       const pointerMove = (e: PointerEvent) => {
         hover = cellAt(local(e));
+        const state = useTactics.getState();
+        canvas.style.cursor = down
+          ? "grabbing"
+          : hit(local(e)) ||
+              (b.outpost && hover >= 0 && !deploymentError(b, hover))
+            ? "pointer"
+            : state.selected
+              ? "crosshair"
+              : "grab";
         if (down && Math.hypot(e.clientX - down.x, e.clientY - down.y) > 6) {
           moved = true;
           if (!down.unit)
@@ -528,18 +535,7 @@ export default function Board() {
           s.rotate(Math.atan2(p.y - at.y, p.x - at.x));
         } else if (moved && down.unit && id >= 0) s.move(id);
         else if (!moved) {
-          const plusCell =
-            b.outpost && Object.values(b.outpost.reserve).some((n) => n > 0)
-              ? b.cells.find(
-                  (c) =>
-                    !deploymentError(b, c.id) &&
-                    Math.hypot(p.x - (c.x + 24), p.y - (c.y - 23)) < 10,
-                )
-              : undefined;
-          if (plusCell) {
-            useTactics.setState({ deployCell: plusCell.id });
-            setPickerOpen(true);
-          } else if (u) {
+          if (u) {
             s.select(u.id);
             if (b.outpost && !deploymentError(b, u.cell))
               useTactics.setState({ deployCell: u.cell });
@@ -565,6 +561,7 @@ export default function Board() {
           } else s.select(null);
         }
         down = null;
+        canvas.style.cursor = "grab";
         if (canvas.hasPointerCapture(e.pointerId))
           canvas.releasePointerCapture(e.pointerId);
       };
@@ -587,12 +584,14 @@ export default function Board() {
         };
       };
       const cancel = () => {
+        hover = -1;
         down = null;
       };
       canvas.addEventListener("pointerdown", pointerDown);
       canvas.addEventListener("pointermove", pointerMove);
       canvas.addEventListener("pointerup", pointerUp);
       canvas.addEventListener("pointercancel", cancel);
+      canvas.addEventListener("pointerleave", cancel);
       canvas.addEventListener("wheel", wheel, { passive: false });
       // Cache sector edges; ownership colors are redrawn from simulation state.
       const borders = b.sectors
@@ -618,6 +617,14 @@ export default function Board() {
           )
         : [];
       let lastTerritory = -1;
+      const troopCounts = new Map(
+        b.squads.map((u) => [u.id, u.members.length]),
+      );
+      const deploymentFlashes = new Map<string, number>();
+      const reducedMotion = window.matchMedia(
+        "(prefers-reduced-motion: reduce)",
+      );
+
       app.ticker.add(() => {
         transform();
         const s = useTactics.getState();
@@ -833,22 +840,50 @@ export default function Board() {
           }
         }
         if (b.outpost) {
-          if (Object.values(b.outpost.reserve).some((n) => n > 0))
-            for (const c of b.cells) {
-              if (deploymentError(b, c.id)) continue;
-              const x = c.x + 24,
-                y = c.y - 23;
+          const available = Object.values(b.outpost.reserve).some((n) => n > 0);
+          const reduced = reducedMotion.matches;
+          const sinceArrival = b.time - (b.outpost.nextReinforcement - 30);
+          const pulse =
+            !reduced && sinceArrival >= 0 && sinceArrival < 2
+              ? Math.sin((sinceArrival * Math.PI) / 2) * 0.3
+              : 0;
+          for (const c of b.cells) {
+            if (deploymentError(b, c.id)) continue;
+            const active =
+              s.deployCell === c.id || (!s.selected && hover === c.id);
+            overlay
+              .poly(hex(c.x, c.y, R - 5))
+              .fill({
+                color: BLUE,
+                alpha: active ? 0.13 : 0.025 + pulse * 0.15,
+              })
+              .stroke({
+                color: BLUE,
+                width: active ? 2 : 1,
+                alpha: (available ? 0.35 : 0.16) + pulse,
+              });
+            const points = hex(c.x, c.y, R - 5);
+            for (let k = 0; k < 6; k++) {
+              const j = k * 2,
+                prev = ((k + 5) % 6) * 2,
+                next = ((k + 1) % 6) * 2;
               overlay
-                .circle(x, y, 8)
-                .fill({ color: 0xf5f3ec, alpha: 0.9 })
-                .stroke({ color: BLUE, width: 1, alpha: 0.5 });
-              overlay
-                .moveTo(x - 3, y)
-                .lineTo(x + 3, y)
-                .moveTo(x, y - 3)
-                .lineTo(x, y + 3)
-                .stroke({ color: BLUE, width: 1 });
+                .moveTo(
+                  points[j] + (points[prev] - points[j]) * 0.19,
+                  points[j + 1] + (points[prev + 1] - points[j + 1]) * 0.19,
+                )
+                .lineTo(points[j], points[j + 1])
+                .lineTo(
+                  points[j] + (points[next] - points[j]) * 0.19,
+                  points[j + 1] + (points[next + 1] - points[j + 1]) * 0.19,
+                )
+                .stroke({
+                  color: BLUE,
+                  width: 2,
+                  alpha: available ? 0.65 : 0.28,
+                });
             }
+          }
           territory.clear();
           const control = outpostInfluence(b);
           for (const [id, amount] of control) {
@@ -1061,6 +1096,16 @@ export default function Board() {
         }
         for (const u of b.squads) {
           const p = squadPosition(b, u);
+          const now = performance.now();
+          if ((troopCounts.get(u.id) ?? 0) < u.members.length)
+            deploymentFlashes.set(u.id, now);
+          troopCounts.set(u.id, u.members.length);
+          const age = now - (deploymentFlashes.get(u.id) ?? -10000);
+          if (age < 650 && !reducedMotion.matches)
+            overlay
+              .circle(p.x, p.y, 15 + age / 25)
+              .stroke({ color: BLUE, width: 2, alpha: 0.55 * (1 - age / 650) });
+
           soldiers(overlay, u, p.x, p.y, u.facing);
           morale(u, p.x, p.y, BLUE);
           const a = u.facing;
@@ -1081,6 +1126,7 @@ export default function Board() {
         canvas.removeEventListener("pointermove", pointerMove);
         canvas.removeEventListener("pointerup", pointerUp);
         canvas.removeEventListener("pointercancel", cancel);
+        canvas.removeEventListener("pointerleave", cancel);
         canvas.removeEventListener("wheel", wheel);
         app.destroy(true, { children: true });
       };
@@ -1103,48 +1149,36 @@ export default function Board() {
           className="map-recruit"
           aria-label="Añadir tropas en esta celda"
         >
-          {!pickerOpen ? (
+          <div className="map-recruit-heading">
+            <span>
+              {game.battle.squads.find((u) => u.cell === game.deployCell)
+                ?.members.length ?? 0}
+              /6 · Despliegue
+            </span>
             <button
-              className="map-plus"
-              aria-label="Añadir tropa aquí"
-              onClick={() => setPickerOpen(true)}
+              aria-label="Cerrar tropas disponibles"
+              onClick={() => useTactics.setState({ deployCell: null })}
             >
-              +
+              ×
             </button>
-          ) : (
-            <>
-              <div className="map-recruit-heading">
-                <span>
-                  {game.battle.squads.find((u) => u.cell === game.deployCell)
-                    ?.members.length ?? 0}
-                  /6
-                </span>
-                <button
-                  aria-label="Cerrar tropas disponibles"
-                  onClick={() => useTactics.setState({ deployCell: null })}
-                >
-                  ×
-                </button>
-              </div>
-              {troopTypes.map((type) => (
-                <button
-                  key={type}
-                  aria-label={`Añadir ${troopNames[type]}`}
-                  disabled={
-                    game.battle.outpost!.reserve[type] === 0 ||
-                    !!deploymentError(game.battle, game.deployCell!)
-                  }
-                  onClick={() => game.placeTroop(type)}
-                >
-                  <i className={`reserve-icon ${type}`}>
-                    {type === "shield" ? "♜" : type === "bow" ? "⌁" : "♞"}
-                  </i>
-                  <span>{troopNames[type]}</span>
-                  <b>{game.battle.outpost!.reserve[type]}</b>
-                </button>
-              ))}
-            </>
-          )}
+          </div>
+          {troopTypes.map((type) => (
+            <button
+              key={type}
+              aria-label={`Añadir ${troopNames[type]}`}
+              disabled={
+                game.battle.outpost!.reserve[type] === 0 ||
+                !!deploymentError(game.battle, game.deployCell!)
+              }
+              onClick={() => game.placeTroop(type)}
+            >
+              <i className={`reserve-icon ${type}`}>
+                {type === "shield" ? "♜" : type === "bow" ? "⌁" : "♞"}
+              </i>
+              <span>{troopNames[type]}</span>
+              <b>{game.battle.outpost!.reserve[type]}</b>
+            </button>
+          ))}
         </div>
       )}
     </>

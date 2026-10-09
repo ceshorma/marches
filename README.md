@@ -6,13 +6,13 @@ Prototipo de apertura: protege una aldea aliada de una patrulla visible en un ta
 
 Un ciclo continuo sobre el mismo mapa:
 
-1. Tocar una celda con **+** junto al cuartel y elegir un lancero de la reserva para crear un escuadrón.
+1. Tocar una celda delimitada en **azul** junto al cuartel y elegir un lancero de la reserva para crear un escuadrón.
 2. Ordenarle llegar a uno de tres emplazamientos. Permanecer quieto allí construye una torre en seis segundos; salir pausa la construcción.
 3. La torre proyecta control gradualmente durante unos siete segundos sobre hasta dos pasos de terreno conectado. Rocas bloquean; bosque y desnivel consumen más alcance. El control permanece aunque se vaya el constructor.
 4. Doce segundos después de la primera torre aparece una incursión visible desde el este. Puedes interceptarla, defender o abandonar la posición.
 5. Si la patrulla completa el saqueo destruye la torre y su zona de control. El emplazamiento se puede reconstruir.
 
-El primer refuerzo llega a la reserva a los 25 segundos; después, cada 30 segundos, alternando lanceros, arqueros y caballería. La reserva admite 12 unidades. El + del mapa permite formar hasta cinco escuadrones o añadir miembros a uno detenido (máximo seis), junto al cuartel o a una torre asegurada y fuera de combate. Los refuerzos no se despliegan automáticamente. Las patrullas vuelven tras retirarse, con una pausa de 28 segundos. No hay pantallas de victoria, salto de misión ni final automático: puedes seguir expandiendo y defendiendo.
+El primer refuerzo llega a la reserva a los 25 segundos; después, cada 30 segundos, alternando lanceros, arqueros y caballería. La reserva admite 12 unidades. La selección directa de una celda de despliegue permite formar hasta cinco escuadrones o añadir miembros a uno detenido (máximo seis), junto al cuartel o a una torre asegurada y fuera de combate. Los refuerzos no se despliegan automáticamente. Las patrullas vuelven tras retirarse, con una pausa de 28 segundos. No hay pantallas de victoria, salto de misión ni final automático: puedes seguir expandiendo y defendiendo.
 
 «Juego libre» conserva el escenario avanzado de tres frentes; «La frontera» vuelve a este inicio. La campaña por etapas anterior se mantiene en el código y en las pruebas, pero ya no es el flujo predeterminado. El módulo `src/tactics/outpost.ts` contiene construcción, influencia, llegadas y ciclo de incursiones.
 

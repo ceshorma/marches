@@ -46,13 +46,18 @@ export default function TacticalApp() {
       }
     }, 25);
     const key = (e: KeyboardEvent) => {
+      if (e.key === "Escape") {
+        useTactics.getState().select(null);
+        (document.activeElement as HTMLElement)?.blur();
+        return;
+      }
       if ((e.target as HTMLElement).closest("button,input")) return;
       const g = useTactics.getState();
       if (e.code === "Space") {
         e.preventDefault();
         useTactics.setState({ paused: !g.paused });
       }
-      if (e.key === "Escape") g.select(null);
+
       if (e.key.toLowerCase() === "r" && g.selected)
         useTactics.setState({ orienting: !g.orienting });
       if (e.key.toLowerCase() === "h")
@@ -121,7 +126,7 @@ export default function TacticalApp() {
               ? s.battle.time < outpost.noticeUntil
                 ? outpost.notice
                 : !s.battle.squads.length
-                  ? "Toca una celda con + junto al cuartel."
+                  ? "Toca una celda azul junto al cuartel."
                   : !outpost.sites.some((site) => site.active)
                     ? "Lleva tu escuadrón a un emplazamiento marcado."
                     : "Las torres aseguran terreno. Tus tropas lo defienden."
