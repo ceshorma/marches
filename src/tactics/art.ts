@@ -19,11 +19,13 @@ export const P = {
   wheat: 0xd9bb6c,
   crop: 0xaab97c,
   soil: 0xb79a6c,
-  leaf: 0x7b9668,
-  leafDark: 0x5f7a52,
-  leafLight: 0xa8bb8c,
-  pine: 0x5a7656,
-  pineDark: 0x45603f,
+  // Nature is muted and light, close to the ground: strong colour is kept
+  // for what you play with (your blue, the clan's soot and red, buildings).
+  leaf: 0xa9b597,
+  leafDark: 0x95a284,
+  leafLight: 0xc6cfb3,
+  pine: 0x9aa98f,
+  pineDark: 0x84957d,
   ally: 0x326f97,
   enemy: 0xb4544b,
   enemyDark: 0x8b3a33,
@@ -128,7 +130,7 @@ export function clanBanner(
 export function tree(g: Graphics, x: number, y: number, s = 1, seed = 0) {
   const r = (9 + rnd(seed) * 3) * s;
   shadow(g, x + 2 * s, y + 2 * s, r * 1.05, r * 0.75);
-  g.circle(x, y, r).fill(P.leafDark).stroke(line(0.6, 1));
+  g.circle(x, y, r).fill(P.leafDark).stroke(line(0.3, 0.8));
   g.circle(x - r * 0.18, y - r * 0.2, r * 0.78).fill(P.leaf);
   g.circle(x - r * 0.38, y - r * 0.42, r * 0.36).fill({
     color: P.leafLight,
@@ -145,7 +147,7 @@ export function pine(g: Graphics, x: number, y: number, s = 1, seed = 0) {
     points.push(x + Math.cos(a) * d, y + Math.sin(a) * d);
   }
   shadow(g, x + 2 * s, y + 2 * s, r, r * 0.7);
-  g.poly(points).fill(P.pineDark).stroke(line(0.6, 0.9));
+  g.poly(points).fill(P.pineDark).stroke(line(0.3, 0.8));
   g.circle(x - r * 0.15, y - r * 0.15, r * 0.45).fill(P.pine);
 }
 export function forest(
@@ -213,6 +215,172 @@ export function grass(g: Graphics, x: number, y: number, seed = 0) {
       .lineTo(bx + lean, y - 3 - (i % 2) * 3)
       .stroke({ color: 0x9fa47c, width: 1, alpha: 0.8 });
   }
+}
+
+// ── Ground ────────────────────────────────────────────────────────────────
+// Ground colour has one rule: brightness says height, hue says soil.
+// Each height level has its own lightness band; meadow, plain, dry and
+// damp ground only change the hue within it, so a squint (or a black and
+// white print) still shows the hills and the valleys.
+const hsl = (h: number, s: number, l: number) => {
+  const a = s * Math.min(l, 1 - l),
+    f = (n: number) => {
+      const k = (n + h / 30) % 12;
+      return Math.round(
+        255 * (l - a * Math.max(-1, Math.min(k - 3, 9 - k, 1))),
+      );
+    };
+  return (f(0) << 16) | (f(8) << 8) | f(4);
+};
+export type Soil = "meadow" | "plain" | "dry" | "damp";
+// Hue and saturation of each soil; lightness of each height level.
+const soils: Record<Soil, [number, number]> = {
+  meadow: [72, 0.3],
+  plain: [45, 0.33],
+  dry: [38, 0.45],
+  damp: [95, 0.22],
+};
+const bands: Record<number, number> = { 0: 0.9, 15: 0.83, 30: 0.75 };
+export const ground = (soil: Soil, height: number, shift = 0) =>
+  hsl(soils[soil][0], soils[soil][1], (bands[height] ?? 0.9) + shift);
+// Kept for the sheet and older callers.
+export const soil = {
+  meadow: ground("meadow", 0),
+  plain: ground("plain", 0),
+  dry: ground("dry", 0),
+  damp: ground("damp", 0),
+  hill: ground("plain", 15),
+  high: ground("plain", 30),
+};
+// Smooth value in [0, 1] from map position (sum of slow waves).
+export const field2 = (x: number, y: number, k = 0) =>
+  0.5 +
+  0.25 * Math.sin(x * 0.0065 + 1.3 + k) * Math.cos(y * 0.008 - 0.7 + k) +
+  0.15 * Math.sin((x + y) * 0.011 + 2.1 + k * 2) +
+  0.1 * Math.cos((x - y * 1.3) * 0.017 + k * 3);
+// Irregular stains inside a cell: the ground is never one even colour.
+export function patches(
+  g: Graphics,
+  x: number,
+  y: number,
+  seed: number,
+  colour: number,
+  alpha = 0.35,
+) {
+  for (let j = 0; j < 2; j++) {
+    if (rnd(seed, j + 40) < 0.35) continue;
+    const cx = x - 14 + rnd(seed, j + 41) * 28,
+      cy = y - 12 + rnd(seed, j + 42) * 24,
+      points: number[] = [];
+    for (let i = 0; i < 7; i++) {
+      const a = (i * Math.PI * 2) / 7,
+        d = 6 + rnd(seed, i + j * 7 + 50) * 7;
+      points.push(cx + Math.cos(a) * d, cy + Math.sin(a) * d * 0.7);
+    }
+    g.poly(points).fill({ color: colour, alpha });
+  }
+}
+// A low bush.
+export function bush(g: Graphics, x: number, y: number, s = 1) {
+  shadow(g, x, y + 2 * s, 6 * s, 2.5 * s);
+  g.circle(x - 2.5 * s, y, 3.6 * s).fill(P.leaf);
+  g.circle(x + 2.5 * s, y - 0.5 * s, 3.2 * s).fill(P.leafDark);
+  g.circle(x, y - 2 * s, 3 * s).fill(P.leafLight);
+}
+// A few loose stones.
+export function stones(g: Graphics, x: number, y: number, seed = 0) {
+  for (let i = 0; i < 3; i++)
+    g.ellipse(
+      x + (i - 1) * 5 + rnd(seed, i + 60) * 2,
+      y + rnd(seed, i + 63) * 3,
+      2.2 + rnd(seed, i + 66),
+      1.6,
+    )
+      .fill(P.stone)
+      .stroke(line(0.6, 0.6));
+}
+// A scatter of wild flowers.
+export function flowers(g: Graphics, x: number, y: number, seed = 0) {
+  const colours = [0xd9b44a, 0xe6e1d0, 0xb98aa6];
+  for (let i = 0; i < 6; i++)
+    g.circle(
+      x - 7 + rnd(seed, i + 70) * 14,
+      y - 4 + rnd(seed, i + 76) * 8,
+      1.1,
+    ).fill(colours[Math.floor(rnd(seed, i + 82) * 3)]);
+}
+
+// Dry scrub for the heights: a low, grey-green tuft.
+export function scrub(g: Graphics, x: number, y: number, seed = 0) {
+  for (let i = 0; i < 4; i++) {
+    const a = -Math.PI / 2 + (i - 1.5) * 0.45;
+    g.moveTo(x, y + 2)
+      .lineTo(
+        x + Math.cos(a) * (5 + rnd(seed, i + 90) * 2),
+        y + Math.sin(a) * 6,
+      )
+      .stroke({ color: 0x8d8f6c, width: 1.3, alpha: 0.85 });
+  }
+}
+// Field boundaries along a cell edge, from (x1, y1) to (x2, y2): a hedge
+// of round shrubs (lowland meadows) or a dry-stone wall (dry ground).
+export function hedge(
+  g: Graphics,
+  x1: number,
+  y1: number,
+  x2: number,
+  y2: number,
+) {
+  for (let t = 0.08; t <= 0.92; t += 0.14) {
+    const x = x1 + (x2 - x1) * t,
+      y = y1 + (y2 - y1) * t;
+    g.circle(x, y, 3).fill(t % 0.28 < 0.14 ? P.leaf : P.leafDark);
+  }
+}
+export function wall(
+  g: Graphics,
+  x1: number,
+  y1: number,
+  x2: number,
+  y2: number,
+) {
+  g.moveTo(x1, y1)
+    .lineTo(x2, y2)
+    .stroke({ color: P.stoneDark, width: 3.2, alpha: 0.55, cap: "round" });
+  g.moveTo(x1, y1)
+    .lineTo(x2, y2)
+    .stroke({ color: P.stoneLight, width: 1.2, alpha: 0.8, cap: "round" });
+}
+// A small copse: two or three trees outside the forests.
+export function copse(g: Graphics, x: number, y: number, seed = 0) {
+  const n = 2 + Math.floor(rnd(seed, 95) * 2);
+  for (let i = 0; i < n; i++)
+    tree(g, x + (i - (n - 1) / 2) * 9, y + (i % 2) * 5, 0.75, seed + i);
+}
+
+// A river cell (fills its hex), or a ford: shallows with stepping stones.
+export function water(
+  g: Graphics,
+  x: number,
+  y: number,
+  hexPoints: number[],
+  seed = 0,
+  ford = false,
+) {
+  g.poly(hexPoints).fill({ color: ford ? 0xb5c9c8 : 0x8fb0b4, alpha: 0.85 });
+  for (let j = 0; j < 3; j++) {
+    const wy = y - 12 + j * 12 + rnd(seed, j) * 3,
+      wx = x - 14 + rnd(seed, j + 4) * 6;
+    g.moveTo(wx, wy)
+      .quadraticCurveTo(wx + 6, wy - 3, wx + 12, wy)
+      .quadraticCurveTo(wx + 18, wy + 3, wx + 24, wy)
+      .stroke({ color: 0xe6efee, width: 1.2, alpha: ford ? 0.5 : 0.8 });
+  }
+  if (ford)
+    for (let i = 0; i < 4; i++)
+      g.ellipse(x - 15 + i * 10, y + 4 + (i % 2) * 5, 4.5, 3)
+        .fill(P.stone)
+        .stroke(line(0.8, 0.8));
 }
 
 // ── Settlement ────────────────────────────────────────────────────────────

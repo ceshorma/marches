@@ -14,6 +14,8 @@ import {
 } from "./campaign";
 import type { TroopType } from "./combat";
 import type { Item } from "./outpost";
+import type { Report } from "./report";
+import type { MapName } from "./maps";
 import { createFrontsBattle, spawnReinforcement } from "./fronts";
 import { create } from "zustand";
 import { createBattle, advance, order } from "./model";
@@ -46,6 +48,11 @@ type State = {
   nextMission: () => void;
   switchScenario: () => void;
   openCampaign: () => void;
+  // Map template for La frontera.
+  mapName: MapName;
+  setMap: (map: MapName) => void;
+  // Puts a reported game back on the board, paused.
+  loadReport: (report: Report) => void;
 };
 const progress = readProgress(),
   finished = progress >= missions.length,
@@ -153,11 +160,30 @@ export const useTactics = create<State>((set, get) => ({
     });
     get().reset();
   },
+  mapName: "llanura",
+  setMap: (mapName) => {
+    set({ mapName, scenario: "outpost" });
+    get().reset();
+  },
+  loadReport: (report) =>
+    set({
+      battle: report.battle,
+      scenario: report.scenario,
+      missionIndex: report.missionIndex,
+      selected: null,
+      held: null,
+      selectedBase: null,
+      paused: true,
+      zoom: 1,
+      focus: get().focus + 1,
+      message: null,
+      revision: get().revision + 1,
+    }),
   reset: () =>
     set({
       battle:
         get().scenario === "outpost"
-          ? createOutpost()
+          ? createOutpost(get().mapName)
           : get().scenario === "fronts"
             ? createFrontsBattle()
             : get().scenario === "campaign"

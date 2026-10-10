@@ -936,3 +936,53 @@ button:focus-visible {
 .troop-icon.on-token {
   color: #f4f0e3;
 }
+
+/* Reports: save the game (and a picture of the map) or load one. */
+.menu-report {
+  display: grid;
+  gap: 8px;
+}
+.menu-report textarea {
+  width: 100%;
+  min-width: 0;
+  box-sizing: border-box;
+  resize: vertical;
+  font: inherit;
+  font-size: 13px;
+  padding: 8px 10px;
+  border: 1px solid #d7d7c9;
+  border-radius: 8px;
+  background: #fbfaf5;
+  color: inherit;
+}
+.menu-report > div {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+.tactical-game .menu-report button,
+.tactical-game .menu-load {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 40px;
+  padding: 0 12px;
+  border: 1px solid #326f9755;
+  border-radius: 20px;
+  font-size: 13px;
+  color: #326f97;
+  cursor: pointer;
+}
+.menu-load input {
+  display: none;
+}
+.menu-report [role="alert"] {
+  color: #b4544b;
+  font-size: 12px;
+}
+
+.menu-map-idea {
+  margin: 0;
+  font-size: 12px;
+  color: #6b766c;
+}

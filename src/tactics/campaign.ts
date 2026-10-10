@@ -39,7 +39,7 @@ export type MissionConfig = {
   squads?: { cell: number; members: TroopType[]; layout?: number[] }[];
   reserve: Record<TroopType, number>;
   // The clock starts at once, or when the first tower stands.
-  trigger: "start" | "tower";
+  trigger: "start" | "tower" | "squad";
   waves: WaveSpec[];
   arrivals: { at: number; type: TroopType }[];
   // Terrain changes that shape this mission's routes.
@@ -71,7 +71,8 @@ export const missions: MissionConfig[] = [
     failure: "No te quedó tierra suficiente",
     sites: [WEST],
     reserve: { ...none, shield: 2 },
-    trigger: "tower",
+    // The waves start with your first squad; until then a lone scout comes.
+    trigger: "squad",
     arrivals: [{ at: 10, type: A }],
     // Riders first: your lancers beat them, and the first clash shows it.
     waves: [wave(25, E, [C, C], 50), wave(65, E, [C, C, A], 60)],
@@ -107,7 +108,7 @@ export const missions: MissionConfig[] = [
   },
   {
     name: "Cada tropa su rival",
-    objective: "CONSERVA 18 CASILLAS",
+    objective: "CONSERVA 19 CASILLAS",
     hint: "Lanceros vencen a caballería, caballería a arqueros, arqueros a lanceros.",
     success: "Has leído al enemigo",
     failure: "No te quedó tierra suficiente",
@@ -127,7 +128,7 @@ export const missions: MissionConfig[] = [
       wave(55, E, [C, C, C], 75),
       wave(95, E, [L, L, L, L], 75),
     ],
-    goal: 18,
+    goal: 19,
     check: holdLand,
   },
   {
@@ -223,6 +224,28 @@ export const missions: MissionConfig[] = [
           : "active",
   },
 ];
+// Between the written waves the clan keeps probing: a light skirmish (one
+// or two raiders of the coming wave's kind) halfway through each long gap,
+// so something is always on its way.
+const SKIRMISH_GAP = 40,
+  SKIRMISH_STRENGTH = 35;
+function withSkirmishes(waves: WaveSpec[]): WaveSpec[] {
+  const out: WaveSpec[] = [];
+  waves.forEach((w, i) => {
+    const before = i ? waves[i - 1].at : 0;
+    if (w.at - before >= SKIRMISH_GAP)
+      out.push({
+        at: Math.round((before + w.at) / 2),
+        from: w.from,
+        units: w.units.slice(0, w.units.length > 3 ? 2 : 1),
+        strength: SKIRMISH_STRENGTH,
+        target: w.target,
+        probe: true,
+      });
+    out.push(w);
+  });
+  return out;
+}
 export function createMission(index: number): Battle {
   index = Math.max(0, Math.min(missions.length - 1, index));
   const m = missions[index],
@@ -251,7 +274,7 @@ export function createMission(index: number): Battle {
   o.script = {
     trigger: m.trigger,
     clock: null,
-    waves: m.waves,
+    waves: withSkirmishes(m.waves),
     arrivals: m.arrivals,
     spawned: 0,
     delivered: 0,

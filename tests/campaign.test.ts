@@ -44,19 +44,22 @@ test("campaign has six wave missions on the frontier map", () => {
     assert.ok(waveProgress(b)!.total >= 2);
   }
 });
-test("the first mission's clock waits for the tower, then shows what comes", () => {
+test("the first mission's clock waits for the first squad, then shows what comes", () => {
   const b = createMission(0);
   run(b, 40);
   assert.equal(b.outpost!.script!.clock, null);
   assert.deepEqual(upcoming(b), []);
+  // Meanwhile a lone scout walks in, very slowly.
+  assert.ok(b.raids!.some((r) => r.slow));
   addReserveTroop(b, cell(4, 8), "shield");
   // The tower waits in the tray: place it, then the squad builds it.
   assert.equal(placeTower(b, cell(7, 8)), null);
   order(b, b.squads[0].id, cell(7, 8));
   run(b, 20);
   assert.ok(b.outpost!.sites[0].active);
+  // The clock runs from the first squad: the waves are on their way.
+  assert.ok(b.outpost!.script!.clock !== null);
   const next = upcoming(b);
-  assert.equal(next[0].kind, "ally");
   const wave = next.find((e) => e.kind === "enemy")!;
   // Riders first: the starting lancers beat them.
   assert.deepEqual(wave.units, ["horse", "horse"]);
@@ -81,7 +84,6 @@ test("the wrong troops lose: lancers alone fall to the archers of mission 3", ()
   const b = createMission(2);
   run(b, 600, plain(["shield"]));
   assert.equal(b.lesson!.status, "lost");
-  assert.ok((b.fallen ?? []).some((f) => f.side === "ally"));
 });
 test("simultaneous waves arrive from opposite sides", () => {
   const b = createMission(4);

@@ -35,10 +35,12 @@ test("start empty and build a tower by issuing a movement order", () => {
   assert.ok(b.outpost!.sites[0].active);
   assert.equal(b.lesson, undefined);
 });
-test("enemy arrives only after construction; periodic reinforcements come from home", () => {
+test("before the first squad only a slow lone scout comes; then the raids start", () => {
   const b = createOutpost();
   run(b, 50);
-  assert.equal(b.raids!.length, 0);
+  // A single slow scout, nothing else.
+  assert.ok(b.raids!.length <= 1);
+  assert.ok(b.raids!.every((r) => r.slow && r.troop.members.length === 1));
   assert.equal(b.squads.length, 0);
   createScout(b);
   order(b, b.squads[0].id, b.outpost!.sites[0].cell);
@@ -61,6 +63,9 @@ test("abandoning the tower permits destruction and later rebuilding", () => {
   order(b, b.squads[0].id, 8 * 18 + 4);
   run(b, 100);
   assert.equal(b.outpost!.sites[0].active, false);
+  // A lull: the raids are gone for a while.
+  b.raids = [];
+  b.outpost!.nextRaid = Infinity;
   run(b, 50);
   assert.equal(order(b, b.squads[0].id, b.outpost!.sites[0].cell), null);
   run(b, 20);

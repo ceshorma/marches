@@ -2,6 +2,8 @@
 
 ## Siguiente
 
+- [ ] Usar los mapas en la campaña (hoy solo en La frontera) y elegir mapa al azar en el modo sin fin.
+- [ ] Rendimiento: la ruta de los caminos tarda en arrancar en mapas con varias entradas.
 - [ ] Obras desde el botín (empalizada, estacas, atalaya), modo sin fin con dificultad ligada a la tierra: ver `docs/territorio.md`.
 - [ ] Tomar los campamentos del Clan del Humo en todas las misiones (hoy solo en la 6, con guarnición): sostener uno junto a una torre lo toma, arde y pasa a ser tierra propia; ese lado deja de mandar oleadas.
 - [ ] Probar con personas el nuevo balance (bajas, golpe de las incursiones 9, cosecha más lenta, misión 6 con guarnición): está ajustado con `scripts/sim.ts`, no jugando.
@@ -25,7 +27,7 @@ Mismo estilo que `src/tactics/art.ts`: mapa de campaña visto desde arriba, colo
 ### Terreno y obras
 - [ ] Camino principal con bordes de piedra y marcas de rodadas (hoy es una línea).
 - [ ] Puentes y vados donde un camino cruza agua.
-- [ ] Ríos y arroyos (requiere terreno de agua en el modelo).
+- [x] Ríos y vados (mapa El río).
 - [ ] Bosque más variado: claros, tocones y árboles caídos.
 - [ ] Curvas de nivel con más carácter en las lomas.
 

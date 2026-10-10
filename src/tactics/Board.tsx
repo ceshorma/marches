@@ -16,6 +16,7 @@ import {
 } from "./outpost";
 import type { Item } from "./outpost";
 import { clash, guide, reasons } from "./guide";
+import { setSnapshot } from "./report";
 import type { Tone } from "./guide";
 import { useEffect, useRef } from "react";
 import { Application, Container, Graphics, Text } from "pixi.js";
@@ -203,6 +204,8 @@ export default function Board() {
         return;
       }
       ref.current!.appendChild(app.canvas);
+      // Reports carry a picture of the map as the player sees it.
+      setSnapshot(() => app.renderer.extract.base64(app.stage));
       const observer = new ResizeObserver(() => app.resize());
       observer.observe(ref.current!);
       const world = new Container(),
@@ -228,13 +231,66 @@ export default function Board() {
       const terrain = new Graphics();
       const territory = new Graphics();
       base.addChild(terrain, territory);
+      // Ground: brightness says height (one band per level), hue says soil
+      // (meadow, plain, dry, damp by water), smooth over the map.
+      const nearWater = (c: (typeof b.cells)[number]) =>
+        adjacent(c.id).some(
+          (id) =>
+            b.cells[id].terrain === "water" || b.cells[id].terrain === "ford",
+        );
+      const soilOf = (c: (typeof b.cells)[number]): art.Soil => {
+        if (c.height === 0 && nearWater(c)) return "damp";
+        // The heights are drier, the lowlands greener.
+        const z = art.field2(c.x, c.y) - c.height / 100;
+        return z > 0.6 ? "meadow" : z < 0.4 ? "dry" : "plain";
+      };
       for (const c of b.cells) {
+        const soil = soilOf(c);
         terrain
           .poly(hex(c.x, c.y))
-          .fill(
-            c.height === 30 ? 0xded6bb : c.height === 15 ? 0xe6dfc8 : 0xefeadb,
-          )
-          .stroke({ color: 0xaaa998, alpha: 0.32, width: 0.8 });
+          .fill(art.ground(soil, c.height))
+          .stroke({ color: 0xaaa998, alpha: 0.18, width: 0.8 });
+        if (c.terrain !== "plain" || c.place) continue;
+        // Stains of a neighbouring soil, same brightness: variety without
+        // blurring the height.
+        const z = art.field2(c.x, c.y, 2);
+        art.patches(
+          terrain,
+          c.x,
+          c.y,
+          c.id,
+          art.ground(z > 0.5 ? "meadow" : "dry", c.height),
+          0.7,
+        );
+        // Details that tell the height: scrub and stones up high, meadows,
+        // flowers and copses down in the valleys.
+        const pick = art.rnd(c.id, 90),
+          dx = -10 + art.rnd(c.id, 91) * 20;
+        if (c.height > 0) {
+          if (pick < 0.3) art.scrub(terrain, c.x + dx, c.y + 6, c.id);
+          else if (pick < 0.45) art.stones(terrain, c.x + 8, c.y + 10, c.id);
+        } else if (soil === "meadow" || soil === "damp") {
+          if (pick < 0.08) art.copse(terrain, c.x + dx, c.y + 2, c.id);
+          else if (pick < 0.2) art.flowers(terrain, c.x, c.y - 8, c.id);
+          else if (pick < 0.28) art.bush(terrain, c.x + dx, c.y + 8);
+        } else if (pick < 0.08) art.stones(terrain, c.x + 8, c.y + 10, c.id);
+        else if (pick < 0.14) art.bush(terrain, c.x + dx, c.y + 8);
+      }
+      // Nothing decorative sits on a cell edge: on this map edges are rules
+      // (your frontier, the clan's, and later palisades), so a hedge or a
+      // wall there would read as an obstacle that is not one.
+      for (const c of b.cells) {
+        // Relief: on the heights the north-west face catches the light and
+        // the south-east face falls into shadow.
+        if (c.height > 0) {
+          const corners = hex(c.x, c.y, R - 2);
+          terrain
+            .poly([...corners.slice(6, 12), c.x, c.y])
+            .fill({ color: 0xfffbea, alpha: 0.18 });
+          terrain
+            .poly([...corners.slice(0, 6), c.x, c.y])
+            .fill({ color: 0x5a4e32, alpha: 0.07 });
+        }
         if (c.height > 0) {
           for (let k = 0; k < 6; k++) {
             const a = ((k * 60 - 30) * Math.PI) / 180,
@@ -293,6 +349,15 @@ export default function Board() {
                 });
         }
         if (c.terrain === "rock") art.rocks(terrain, c.x, c.y, c.id);
+        if (c.terrain === "water" || c.terrain === "ford")
+          art.water(
+            terrain,
+            c.x,
+            c.y,
+            hex(c.x, c.y, R),
+            c.id,
+            c.terrain === "ford",
+          );
         if (c.terrain === "plain" && !c.place && art.rnd(c.id, 11) < 0.14)
           art.grass(terrain, c.x - 8 + art.rnd(c.id) * 16, c.y + 6, c.id);
       }
@@ -316,6 +381,31 @@ export default function Board() {
           road.moveTo(b.cells[start].x, b.cells[start].y);
           for (const id of path) road.lineTo(b.cells[id].x, b.cells[id].y);
           road.stroke({ color: 0xc9b18a, alpha: 0.35, width: 6 });
+        }
+      } else if (b.outpost?.map && b.outpost.map !== "llanura") {
+        // Templates: a dirt road from the fort to each of the clan's camps,
+        // along the way troops would take.
+        const roadWorld = { ...b, squads: [], raids: [], fronts: [] };
+        for (const end of b.outpost.entries ?? []) {
+          const start = b.outpost.fort;
+          const path = route(
+            roadWorld,
+            {
+              id: "road",
+              cell: start,
+              path: [],
+              progress: 0,
+            } as unknown as Squad,
+            end,
+          );
+          road.moveTo(b.cells[start].x, b.cells[start].y);
+          for (const id of path) road.lineTo(b.cells[id].x, b.cells[id].y);
+          road.stroke({
+            color: 0xc9b18a,
+            alpha: 0.45,
+            width: 8,
+            join: "round",
+          });
         }
       } else {
         road
@@ -365,22 +455,39 @@ export default function Board() {
           9,
         );
       }
-      text(
-        base,
-        "▲ 30",
-        b.cells[4 * 18 + 6].x,
-        b.cells[4 * 18 + 6].y,
-        11,
-        0x8f8668,
-      );
-      text(
-        base,
-        "▲ 15",
-        b.cells[2 * 18 + 8].x,
-        b.cells[2 * 18 + 8].y,
-        11,
-        0x8f8668,
-      );
+      // Height marks, one per hill: on the highest ground of each rise
+      // (a lower rise only gets its own when no summit sits on it).
+      for (const level of [30, 15]) {
+        const seen = new Set<number>();
+        for (const c of b.cells) {
+          if (c.height !== level || seen.has(c.id)) continue;
+          const group = [c.id];
+          seen.add(c.id);
+          for (let i = 0; i < group.length; i++)
+            for (const id of adjacent(group[i]))
+              if (b.cells[id].height === level && !seen.has(id)) {
+                seen.add(id);
+                group.push(id);
+              }
+          if (
+            level === 15 &&
+            group.some((id) => adjacent(id).some((n) => b.cells[n].height > 15))
+          )
+            continue;
+          const cx =
+              group.reduce((t, id) => t + b.cells[id].x, 0) / group.length,
+            cy = group.reduce((t, id) => t + b.cells[id].y, 0) / group.length,
+            peak = group
+              .map((id) => b.cells[id])
+              .filter((p) => p.terrain !== "rock" && p.terrain !== "forest")
+              .sort(
+                (p, q) =>
+                  Math.hypot(p.x - cx, p.y - cy) -
+                  Math.hypot(q.x - cx, q.y - cy),
+              )[0];
+          if (peak) text(base, `▲ ${level}`, peak.x, peak.y - 14, 11, 0x7d735a);
+        }
+      }
       let pan = { x: 0, y: 0 },
         fit = 1,
         lastW = 0,
@@ -1030,6 +1137,7 @@ export default function Board() {
           // Land: what is yours, with a crisp frontier; red where it is eaten.
           territory.clear();
           const land = b.outpost.land ?? [],
+            foe = b.outpost.foe ?? [],
             settled = b.outpost.settled ?? [],
             burning = b.outpost.burning ?? [],
             eating = eaten(b),
@@ -1042,6 +1150,24 @@ export default function Board() {
             const v = land[c.id] ?? 0,
               people = settled[c.id] ?? 0,
               fire = b.time - (burning[c.id] ?? -Infinity);
+            // The clan's land, in soot, with its own frontier.
+            const f = foe[c.id] ?? 0;
+            if (f > 0.02)
+              territory
+                .poly(hex(c.x, c.y, R - 1))
+                .fill({ color: CLAN, alpha: f * 0.2 });
+            if (f >= HOLD)
+              edges[c.id].forEach((n, k) => {
+                if (n !== undefined && (foe[n] ?? 0) >= HOLD) return;
+                const a = ((k * 60 - 30) * Math.PI) / 180;
+                territory
+                  .moveTo(c.x + Math.cos(a) * R, c.y + Math.sin(a) * R)
+                  .lineTo(
+                    c.x + Math.cos(a + Math.PI / 3) * R,
+                    c.y + Math.sin(a + Math.PI / 3) * R,
+                  )
+                  .stroke({ color: CLAN, width: 2.5, alpha: 0.6 });
+              });
             if (v > 0.02)
               territory
                 .poly(hex(c.x, c.y, R - 1))
@@ -1437,6 +1563,72 @@ export default function Board() {
           token(overlay, u, p.x, p.y, u.facing, 1, BLUE, flashOf(u));
           morale(u, p.x, p.y);
         }
+        // Building, above the squads so it reads: an empty site shows the
+        // squad it is waiting for; a squad on it works (sparks, progress);
+        // a finished tower raises its flag and frees the squad.
+        if (b.outpost)
+          for (const site of b.outpost.sites) {
+            const c = b.cells[site.cell],
+              t = b.time;
+            if (!site.active) {
+              const builder = b.squads.find(
+                (u) => u.cell === site.cell && !u.path.length && !u.routing,
+              );
+              const coming = b.squads.some((u) => u.path.at(-1) === site.cell);
+              if (!builder && !coming) {
+                // The squad this site is waiting for, as a dashed outline.
+                const a = 0.35 + (Math.sin(t * 3) + 1) * 0.15;
+                for (let slot = 0; slot < 6; slot++) {
+                  const { a: fx, b: fy } = slotOffset(slot);
+                  overlay
+                    .roundRect(c.x + fx - 6.5, c.y + fy - 6.5, 13, 13, 3)
+                    .stroke({ color: BLUE, width: 1.4, alpha: a });
+                }
+              } else if (builder && !builder.engaged) {
+                // At work: chips fly off the top of the squad.
+                for (let k = 0; k < 3; k++) {
+                  const ph = (t * 1.6 + k / 3) % 1,
+                    ang = -Math.PI / 2 + (k - 1) * 0.7,
+                    d = 26 + ph * 14;
+                  overlay
+                    .moveTo(c.x + Math.cos(ang) * d, c.y + Math.sin(ang) * d)
+                    .lineTo(
+                      c.x + Math.cos(ang) * (d + 4),
+                      c.y + Math.sin(ang) * (d + 4),
+                    )
+                    .stroke({ color: 0xd9a54a, width: 2, alpha: 1 - ph });
+                }
+                overlay
+                  .moveTo(c.x, c.y - (R - 6))
+                  .arc(
+                    c.x,
+                    c.y,
+                    R - 6,
+                    -Math.PI / 2,
+                    -Math.PI / 2 + site.progress * Math.PI * 2,
+                  )
+                  .stroke({ color: BLUE, width: 4, cap: "round" });
+              }
+            } else if (site.builtAt !== null && site.builtAt > 0) {
+              const age = t - site.builtAt;
+              if (age < 3) {
+                // The flag goes up; the squad is free to go.
+                overlay.circle(c.x, c.y, R * (0.6 + age * 0.5)).stroke({
+                  color: BLUE,
+                  width: 3 * (1 - age / 3),
+                  alpha: 1 - age / 3,
+                });
+                const free = b.squads.find((u) => u.cell === site.cell);
+                if (free)
+                  for (const k of [-1, 1]) {
+                    const x = c.x + k * (34 + age * 6);
+                    overlay
+                      .poly([x, c.y - 6, x + k * 7, c.y, x, c.y + 6])
+                      .fill({ color: BLUE, alpha: 1 - age / 3 });
+                  }
+              }
+            }
+          }
         const beat = reducedMotion.matches
           ? 0.5
           : (Math.sin(b.time * 4) + 1) / 2;
@@ -1762,6 +1954,7 @@ export default function Board() {
         }
       });
       cleanup = () => {
+        setSnapshot(null);
         canvas.removeEventListener("pointerdown", pointerDown);
         canvas.removeEventListener("pointermove", pointerMove);
         canvas.removeEventListener("pointerup", pointerUp);

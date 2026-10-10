@@ -15,7 +15,11 @@ import {
   X,
   RotateCcw,
   Menu,
+  Download,
+  Upload,
 } from "lucide-react";
+import { readReport, takeSnapshot, writeReport } from "./report";
+import { mapNames, maps } from "./maps";
 import Board from "./Board";
 import { useTactics } from "./state";
 import "./tactics.css";
@@ -38,6 +42,44 @@ export default function TacticalApp() {
   const closeMenu = () => {
     setMenu(false);
     useTactics.setState({ paused: wasPaused });
+  };
+  // Reports: the whole game and a picture of the map in one file, to send
+  // when something goes wrong; loading one puts that exact game back.
+  const [note, setNote] = useState(""),
+    [reportError, setReportError] = useState<string | null>(null);
+  const saveReport = async () => {
+    const g = useTactics.getState();
+    const text = writeReport({
+      scenario: g.scenario,
+      missionIndex: g.missionIndex,
+      battle: g.battle,
+      image: await takeSnapshot(),
+      note: note.trim() || undefined,
+    });
+    const stamp = new Date()
+      .toISOString()
+      .slice(0, 19)
+      .replace(/[-:]/g, "")
+      .replace("T", "-");
+    const link = document.createElement("a");
+    link.href = URL.createObjectURL(
+      new Blob([text], { type: "application/json" }),
+    );
+    link.download = `marches-informe-${stamp}.json`;
+    link.click();
+    URL.revokeObjectURL(link.href);
+    setNote("");
+  };
+  const loadFile = async (file: File | undefined) => {
+    if (!file) return;
+    try {
+      useTactics.getState().loadReport(readReport(await file.text()));
+      setGeneration((g) => g + 1);
+      setMenu(false);
+      setReportError(null);
+    } catch {
+      setReportError("Ese archivo no es un informe de MARCHES");
+    }
   };
   const goTo = (scenario: "campaign" | "outpost" | "fronts") => {
     if (scenario === "campaign") s.openCampaign();
@@ -96,7 +138,14 @@ export default function TacticalApp() {
     }
   }, [s.message]);
   return (
-    <main className="tactical-game">
+    <main
+      className="tactical-game"
+      onDragOver={(e) => e.preventDefault()}
+      onDrop={(e) => {
+        e.preventDefault();
+        void loadFile(e.dataTransfer.files[0]);
+      }}
+    >
       <Board key={`${generation}-${s.scenario}-${s.missionIndex}`} />
       <header className="tactical-header">
         <div className="brand">
@@ -435,6 +484,28 @@ export default function TacticalApp() {
                 </button>
               ))}
             </div>
+            {s.scenario === "outpost" && (
+              <>
+                <small>Mapa</small>
+                <div className="menu-modes">
+                  {mapNames.map((m) => (
+                    <button
+                      key={m}
+                      title={maps[m].idea}
+                      className={s.mapName === m ? "chosen" : ""}
+                      onClick={() => {
+                        s.setMap(m);
+                        setGeneration((g) => g + 1);
+                        setMenu(false);
+                      }}
+                    >
+                      {maps[m].name}
+                    </button>
+                  ))}
+                </div>
+                <p className="menu-map-idea">{maps[s.mapName].idea}</p>
+              </>
+            )}
             <button
               className="menu-restart"
               onClick={() => {
@@ -445,6 +516,29 @@ export default function TacticalApp() {
             >
               <RotateCcw size={16} /> Reiniciar
             </button>
+            <small>Informe</small>
+            <div className="menu-report">
+              <textarea
+                value={note}
+                onChange={(e) => setNote(e.target.value)}
+                placeholder="¿Qué pasó? (opcional)"
+                rows={2}
+              />
+              <div>
+                <button onClick={() => void saveReport()}>
+                  <Download size={16} /> Guardar informe
+                </button>
+                <label className="menu-load">
+                  <Upload size={16} /> Cargar
+                  <input
+                    type="file"
+                    accept="application/json,.json"
+                    onChange={(e) => void loadFile(e.target.files?.[0])}
+                  />
+                </label>
+              </div>
+              {reportError && <span role="alert">{reportError}</span>}
+            </div>
             <div className="controls">
               <span>
                 Arrastra una tropa del patio, o tócala y toca su destino

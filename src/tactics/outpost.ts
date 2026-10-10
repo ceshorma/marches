@@ -1,20 +1,25 @@
 import { troopNames } from "./combat";
+import { applyMap, maps } from "./maps";
+import type { MapName } from "./maps";
 import type { TroopType } from "./combat";
-import { createBattle, adjacent, blocked, route, DX } from "./model";
+import { createBattle, adjacent, blocked, route, DX, solid } from "./model";
 import type { Battle, Raid, Squad, WaveSpec } from "./model";
 const cell = (q: number, r: number) => r * 18 + q;
 export const EAST = cell(16, 8);
 // What the tray holds: troops, and towers waiting to be placed.
 export type Item = TroopType | "tower";
-export function createOutpost(): Battle {
+export function createOutpost(map: MapName = "llanura"): Battle {
   const b = createBattle();
+  const t = maps[map];
   b.squads = [];
   b.raids = [];
   b.cells.forEach((c) => delete c.place);
   b.cells[cell(3, 8)].place = "fort";
   b.outpost = {
     fort: cell(3, 8),
-    sites: [cell(7, 8), cell(9, 5), cell(11, 9)].map((cell) => ({
+    map,
+    entries: [...t.entries],
+    sites: t.sites.map((cell) => ({
       cell,
       progress: 0,
       builtAt: null,
@@ -34,7 +39,7 @@ export function createOutpost(): Battle {
     supplyEvery: 30,
     raids: {
       firstDelay: 12,
-      interval: 28,
+      interval: 20,
       waves: [["shield"]],
       strength: 30,
       limit: Infinity,
@@ -47,6 +52,7 @@ export function createOutpost(): Battle {
   };
   for (const s of b.outpost.sites) b.cells[s.cell].terrain = "plain";
   for (let q = 3; q < 18; q++) b.cells[cell(q, 8)].terrain = "plain";
+  applyMap(b.cells, map, b.outpost.fort);
   settleLand(b);
   return b;
 }
@@ -70,7 +76,7 @@ const near = (b: Battle, a: number, c: number, distance = 130) =>
 export function deploymentError(b: Battle, id: number): string | null {
   const o = b.outpost,
     c = b.cells[id];
-  if (!o || !c || c.terrain === "rock") return "Celda inaccesible";
+  if (!o || !c || solid(c)) return "Celda inaccesible";
   const anchors = [
     o.fort,
     ...o.sites.filter((s) => s.active).map((s) => s.cell),
@@ -138,7 +144,8 @@ export function towerError(b: Battle, id: number): string | null {
     c = b.cells[id];
   if (!o || !c) return "Celda inaccesible";
   if (!(o.kits ?? 0)) return "No hay torres para colocar";
-  if (c.terrain === "rock" || c.place) return "Aquí no se puede levantar";
+  if (solid(c) || c.terrain === "ford" || c.place)
+    return "Aquí no se puede levantar";
   if (
     [o.fort, ...o.sites.map((x) => x.cell)].some(
       (x) => cellsApart(b, x, id) < TOWER_GAP,
@@ -194,7 +201,7 @@ export function launch(
   const from = !blocked(b, spec.from, "incursion")
     ? spec.from
     : adjacent(spec.from).find(
-        (id) => !blocked(b, id, "incursion") && b.cells[id].terrain !== "rock",
+        (id) => !blocked(b, id, "incursion") && !solid(b.cells[id]),
       );
   if (from === undefined) return false;
   const troop: Squad = {
@@ -227,6 +234,7 @@ export function launch(
     strength: spec.strength,
     wave,
     guard: guard || undefined,
+    ...(spec.probe ? { probe: true } : {}),
   };
   b.raids = [...(b.raids ?? []), raid];
   if (guard) {
@@ -245,6 +253,11 @@ export function launch(
   o.waves++;
   return true;
 }
+// Free play: raids come in from each entry in turn.
+const nextEntry = (o: Outpost) => {
+  const entries = o.entries?.length ? o.entries : [EAST];
+  return entries[o.waves % entries.length];
+};
 // Scripted target: "tower" rotates over standing towers, else the fort.
 function aim(b: Battle, target: WaveSpec["target"], index: number) {
   const o = b.outpost!;
@@ -313,7 +326,7 @@ export function enemyCamps(b: Battle): number[] {
   if (!o) return [];
   const camps = o.script
     ? [...new Set(o.script.waves.map((w) => w.from))]
-    : [EAST];
+    : (o.entries ?? [EAST]);
   // A taken camp is gone: it burns and becomes your land.
   return o.camp?.taken ? camps.filter((id) => id !== o.camp!.cell) : camps;
 }
@@ -333,7 +346,11 @@ function runScript(b: Battle) {
   const o = b.outpost!,
     sc = o.script!;
   if (sc.clock === null) {
-    if (sc.trigger === "start" || o.sites.some((s) => s.active))
+    if (
+      sc.trigger === "start" ||
+      (sc.trigger === "squad" && b.squads.length) ||
+      o.sites.some((s) => s.active)
+    )
       sc.clock = b.time;
     else return;
   }
@@ -397,7 +414,7 @@ export function upcoming(b: Battle): Upcoming[] {
         o.raids.waves[
           (o.raids.retry ? o.repelled : o.waves) % o.raids.waves.length
         ],
-      from: EAST,
+      from: nextEntry(o),
     });
   const harvest = nextHarvest(b);
   if (harvest) events.push(harvest);
@@ -434,8 +451,8 @@ export function updateOutpost(b: Battle, dt: number) {
   for (const r of b.raids) {
     if (r.handled || r.outcome === "active") continue;
     r.handled = true;
-    // A garrison is no wave: it does not count towards the mission's waves.
-    if (r.guard) continue;
+    // Garrisons and scouts are no waves: they do not count towards them.
+    if (r.guard || r.slow) continue;
     o.resolved++;
     if (r.outcome === "protected") {
       o.repelled++;
@@ -455,35 +472,72 @@ export function updateOutpost(b: Battle, dt: number) {
     r.spoils = true;
     arrive(b, spoilsOf(r.troop.members), r.troop.cell);
   }
-  const before = b.raids.length;
   b.raids = b.raids.filter((r) => r.phase !== "gone");
-  if (!o.script && before > b.raids.length && !b.raids.length)
-    o.nextRaid =
-      o.repelled < o.raids.limit && !o.camp?.taken
-        ? b.time + o.raids.interval
-        : Infinity;
   updateLand(b, dt);
   updateTracks(b, dt);
+  updateScouts(b);
   if (o.camp && !o.camp.taken) updateCamp(b, o.camp, dt);
   if (o.script) {
     if (!o.camp?.taken) runScript(b);
     return;
   }
-  if (!b.raids.length && b.time >= o.nextRaid) {
-    const targets = o.sites.filter((s) => s.active);
+  // Free play keeps a steady rhythm: a raid every interval, up to two on
+  // the map at once, at your towers in turn (or the fort while none stand).
+  const raiding = b.raids.filter((r) => !r.slow && !r.guard).length;
+  if (
+    raiding < 2 &&
+    b.time >= o.nextRaid &&
+    o.repelled < o.raids.limit &&
+    !o.camp?.taken
+  ) {
+    const towers = o.sites.filter((s) => s.active);
     if (
-      targets.length &&
       launch(b, {
-        from: EAST,
+        from: nextEntry(o),
         units:
           o.raids.waves[
             (o.raids.retry ? o.repelled : o.waves) % o.raids.waves.length
           ],
         strength: o.raids.strength,
-        target: targets[o.waves % targets.length].cell,
+        target: towers.length ? towers[o.waves % towers.length].cell : o.fort,
       })
     )
-      o.nextRaid = Infinity;
+      o.nextRaid = b.time + o.raids.interval;
+  }
+}
+// Until your first squad stands, nothing waits: a lone scout sets out every
+// SCOUT_EVERY seconds and walks very slowly towards the fort, giving time to
+// form that squad. The normal rhythm starts with it (free play's raids, and
+// missions whose clock waits for a squad).
+export const SCOUT_EVERY = 45,
+  SCOUT_FIRST = 8;
+function updateScouts(b: Battle) {
+  const o = b.outpost!;
+  if (b.squads.length) {
+    // The first squad stands: scouts stop, the normal rhythm begins.
+    if (o.nextScout !== Infinity) {
+      o.nextScout = Infinity;
+      if (!o.script && !Number.isFinite(o.nextRaid))
+        o.nextRaid = b.time + o.raids.firstDelay;
+    }
+    return;
+  }
+  if (o.script && o.script.clock !== null) return;
+  o.nextScout ??= SCOUT_FIRST;
+  if (b.time < o.nextScout) return;
+  const entries = enemyCamps(b);
+  if (
+    entries.length &&
+    launch(b, {
+      from: entries[0],
+      units: ["shield"],
+      strength: 20,
+      target: o.fort,
+      probe: true,
+    })
+  ) {
+    b.raids!.at(-1)!.slow = true;
+    o.nextScout = b.time + SCOUT_EVERY;
   }
 }
 // Raiders leave tracks where they pass; they fade over a couple of minutes,
@@ -548,6 +602,9 @@ export const HOLD = 0.5;
 export const SETTLE = 24;
 const SCORCH = 0.6;
 export const BURN = 6;
+// Where people can settle: not on rock, in a river or a ford.
+const livable = (c: Battle["cells"][number]) =>
+  !solid(c) && c.terrain !== "ford";
 // Some settled cells grow a house; troops set out from them.
 export const hasHouse = (id: number) =>
   (id * 7 + Math.floor(id / 18)) % 3 === 0;
@@ -571,11 +628,11 @@ function reach(b: Battle, from: number, limit: number) {
       cost = costs.get(id)!;
     for (const n of adjacent(id)) {
       const c = b.cells[n];
-      if (c.terrain === "rock") continue;
+      if (solid(c)) continue;
       const next =
         cost +
         1 +
-        (c.terrain === "forest" ? 0.5 : 0) +
+        (c.terrain === "forest" || c.terrain === "ford" ? 0.5 : 0) +
         Math.max(0, c.height - b.cells[id].height) / 30;
       if (next <= limit && next < (costs.get(n) ?? Infinity)) {
         costs.set(n, next);
@@ -606,9 +663,14 @@ export function settleLand(b: Battle) {
   // Land already held when a mission starts is already lived in.
   o.settled = b.cells.map(() => 0);
   o.burning = b.cells.map(() => -Infinity);
+  // The clan already holds the ground around its camps.
+  o.foe = b.cells.map(() => 0);
+  for (const camp of enemyCamps(b))
+    for (const id of reach(b, camp, FOE_REACH).keys()) o.foe[id] = 1;
   for (const id of supported(b).keys()) {
     o.land[id] = 1;
-    if (b.cells[id].terrain !== "rock") o.settled[id] = 1;
+    o.foe[id] = 0;
+    if (livable(b.cells[id])) o.settled[id] = 1;
   }
 }
 export const held = (b: Battle) =>
@@ -617,11 +679,53 @@ export const held = (b: Battle) =>
 export function eaten(b: Battle) {
   const cells = new Set<number>();
   for (const r of live(b)) {
-    if (r.phase === "retreat" || r.troop.routing || r.guard) continue;
+    if (r.phase === "retreat" || r.troop.routing || r.guard || r.probe)
+      continue;
     cells.add(r.troop.cell);
     for (const n of adjacent(r.troop.cell)) cells.add(n);
   }
   return cells;
+}
+// ── The clan's land ─────────────────────────────────────────────────────
+// The Clan del Humo holds ground too, in soot: around its camps (where your
+// land is not), and wherever its raiders eat yours. Your land wins it back
+// slowly where your towers reach, faster under your squads' feet; it fades
+// on its own elsewhere. While the clan holds a cell your land grows there at
+// FOE_DRAG of its pace. A taken camp stops feeding it.
+const FOE_REACH = 2,
+  FOE_GROW = 0.1,
+  FOE_TAKE = 0.6,
+  FOE_BACK = 0.06,
+  FOE_TREAD = 0.4,
+  FOE_FADE = 0.01,
+  FOE_DRAG = 0.4;
+export const foeHeld = (b: Battle) =>
+  (b.outpost?.foe ?? []).filter((v) => v >= HOLD).length;
+function updateFoe(
+  b: Battle,
+  eating: Map<number, number>,
+  from: Map<number, number>,
+  dt: number,
+) {
+  const o = b.outpost!,
+    land = o.land!,
+    foe = (o.foe ??= b.cells.map(() => 0));
+  const camps = new Set<number>();
+  for (const camp of enemyCamps(b))
+    for (const id of reach(b, camp, FOE_REACH).keys()) camps.add(id);
+  const trodden = new Set(
+    b.squads.filter((u) => !u.routing).map((u) => u.cell),
+  );
+  for (let id = 0; id < foe.length; id++) {
+    if (solid(b.cells[id])) continue;
+    let v = foe[id];
+    const eat = eating.get(id);
+    if (eat) v += eat * FOE_TAKE * dt;
+    else if (camps.has(id) && land[id] < HOLD) v += FOE_GROW * dt;
+    else v -= (from.has(id) ? FOE_BACK : FOE_FADE) * dt;
+    if (trodden.has(id)) v -= FOE_TREAD * dt;
+    foe[id] = Math.min(1, Math.max(0, v));
+  }
 }
 function updateLand(b: Battle, dt: number) {
   const o = b.outpost!;
@@ -631,15 +735,18 @@ function updateLand(b: Battle, dt: number) {
     towers = new Set(o.sites.filter((s) => s.active).map((s) => s.cell));
   const eating = new Map<number, number>();
   for (const r of live(b)) {
-    if (r.phase === "retreat" || r.troop.routing || r.guard) continue;
+    if (r.phase === "retreat" || r.troop.routing || r.guard || r.probe)
+      continue;
     eating.set(r.troop.cell, (eating.get(r.troop.cell) ?? 0) + EAT);
     for (const n of adjacent(r.troop.cell))
       eating.set(n, (eating.get(n) ?? 0) + EAT_NEAR);
   }
   o.settled ??= b.cells.map(() => 0);
   o.burning ??= b.cells.map(() => -Infinity);
+  o.foe ??= b.cells.map(() => 0);
   const settled = o.settled,
-    burning = o.burning;
+    burning = o.burning,
+    foe = o.foe;
   for (let id = 0; id < land.length; id++) {
     const eat = eating.get(id);
     if (eat) {
@@ -652,15 +759,20 @@ function updateLand(b: Battle, dt: number) {
       }
     } else {
       if (from.has(id)) {
+        // Ground the clan holds is slow to win back.
         if (b.time >= from.get(id)!)
-          land[id] = Math.min(1, land[id] + GROW * dt);
+          land[id] = Math.min(
+            1,
+            land[id] + GROW * (foe[id] >= HOLD ? FOE_DRAG : 1) * dt,
+          );
       } else land[id] = Math.max(0, land[id] - FADE * dt);
       // Held ground is slowly settled: fields first, then houses.
-      if (land[id] >= HOLD && b.cells[id].terrain !== "rock")
+      if (land[id] >= HOLD && livable(b.cells[id]))
         settled[id] = Math.min(1, settled[id] + dt / SETTLE);
       else settled[id] = Math.max(0, settled[id] - dt * 0.1);
     }
   }
+  updateFoe(b, eating, from, dt);
   // A tower whose own ground is eaten falls.
   for (const s of o.sites)
     if (s.active && land[s.cell] < 0.2) {

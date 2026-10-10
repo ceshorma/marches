@@ -29,13 +29,36 @@ Como en Mini Metro, la presión se acumula en el mapa donde ocurre:
 - **Lo que tocas primero decide el verbo.** Desplegar empieza siempre en el patio: arrastra una tropa a una casilla azul libre (escuadrón nuevo) o sobre un escuadrón que puede reforzarse donde está (se ilumina entero); o tócala para tomarla en la mano (anillo ámbar) y toca después el destino. Con una tropa en la mano se iluminan los destinos válidos; tocar otro sitio la devuelve. Mover empieza siempre en un escuadrón: selecciónalo y toca cualquier casilla, azul o no. En reposo las casillas azules apenas se marcan, y el patio late cuando desplegar es el siguiente paso.
 - **Torres desde la bandeja.** Las torres que la misión te da esperan en la bandeja, bajo las tropas. Se arrastran a cualquier casilla abierta cerca de tu tierra y lejos de otras torres (con una en la mano se iluminan todas las válidas, y la que sugiere la misión lleva la silueta de la torre); después un escuadrón encima la levanta. Ver `docs/territorio.md`.
 - **Huecos visibles.** Las posiciones vacías de cada escuadrón se dibujan como casillas con borde.
+- **Ritmo.** Mientras no tienes ningún escuadrón solo llega un explorador solitario, cada 45 s y muy despacio, para darte tiempo; con tu primer escuadrón empieza el ritmo normal. En la campaña, entre oleadas escritas separadas 40 s o más llega una escaramuza ligera (uno o dos del tipo de la oleada siguiente) que pelea pero no come tierra. En La frontera sale una incursión cada 20 s, hasta dos a la vez.
 - **El enemigo no huye.** Una incursión que pierde la cohesión en combate queda destruida donde está: sus hombres se dispersan y en el suelo quedan lanzas rotas y su estandarte caído durante un rato. Sus armas equipan una tropa más del tipo que más traía, que camina desde el campo de batalla hasta el patio. Solo vuelven a casa los que ya saquearon, cargando sacos de botín, y aún se les puede dar alcance por el camino.
 - **El Clan del Humo.** El enemigo tiene cara: fichas de hollín con el frente y la cohesión en rojo brasa, y cada incursión marcha bajo su estandarte (tela negra con una voluta de humo que nace de una brasa).
+- **Su tierra.** El clan también domina terreno, en hollín y con su propia frontera: alrededor de sus campamentos (donde no llega la tuya) y en todo lo que sus incursiones se comen. Tu tierra lo recupera despacio donde llegan tus torres, y rápido bajo los pies de tus escuadrones; mientras el clan tiene una casilla, tu tierra crece ahí más lenta. Tomar un campamento deja de alimentarla.
 - **Sus campamentos.** Cada punto por el que entran oleadas es un campamento del clan, siempre a la vista: una casilla de hollín (como la tuya es azul) con empalizada, una tienda, un fuego que humea y su estandarte. Ahí vive el enemigo. La cámara encuadra al empezar el cuartel, los emplazamientos y los campamentos; en el teléfono, los que quedan fuera se señalan con una marca de hollín quieta en el borde.
 - **Las bajas cuentan.** Un escuadrón que se quiebra pierde un integrante del lado por el que le golpearon, que queda caído en azul; si se queda sin nadie, desaparece. Con la tropa equivocada, el choque se pierde.
 - **El campamento rival** (misión 6) lo guarda una guarnición inmóvil que hay que vencer. Después se toma sosteniéndolo; si el clan lo disputa, la toma avanza más despacio, y mientras lo ocupas, sus oleadas van a por ti.
 - **La oleada se reúne.** Durante sus últimos 15 segundos, la próxima incursión hace crecer su campamento: el humo se espesa, se levantan más tiendas y el estandarte se alza; al completarse, sale. Si está fuera de la pantalla, una flecha en el borde lo indica.
 - **Huellas.** Las incursiones dejan rastro en las casillas por las que pasan, orientado según su marcha, y tarda un par de minutos en borrarse: el mapa recuerda por dónde vienen.
+
+## Mapas
+
+En La frontera, el menú deja elegir el mapa. Cada uno invita a una forma de pelear (`src/tactics/maps.ts`):
+
+- **Llanura:** el mapa de siempre, una loma al norte y una línea de rocas.
+- **El paso:** una cordillera con un único paso; pocos lanceros lo sostienen.
+- **El río:** solo se cruza por dos vados (agua con piedras); se defienden los cruces.
+- **La meseta:** una meseta central con acantilados al norte y al sur y rampas al este y oeste; quien tiene la altura gana a los arqueros.
+- **El bosque:** un bosque cerrado al norte, el flanco por donde no se les ve venir.
+- **Dos valles:** una sierra parte el mapa; las incursiones llegan por dos valles a la vez.
+
+Las incursiones salen por turnos de los campamentos de cada mapa, y un camino de tierra une el cuartel con cada uno.
+
+## Construir
+
+Un emplazamiento vacío muestra en discontinuo el escuadrón que espera; con un escuadrón encima saltan astillas y avanza el anillo de obra; al terminar, la torre se alza con una onda y unas flechas indican que el escuadrón queda libre.
+
+## Informes
+
+El menú de pausa guarda un informe (el estado completo de la partida y una imagen del mapa, con una nota opcional) y carga uno; también se puede soltar el archivo sobre el juego. `npx tsx scripts/report.ts informe.json [segundos]` lo lee, lo describe y puede seguir jugándolo para reproducir un error.
 
 ## Formación
 

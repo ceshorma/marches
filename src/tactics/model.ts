@@ -12,7 +12,8 @@ export type Cell = {
   x: number;
   y: number;
   height: number;
-  terrain: "plain" | "forest" | "rock";
+  // Rock and water stop everyone; forest and fords slow them down.
+  terrain: "plain" | "forest" | "rock" | "water" | "ford";
   place?: "fort" | "village" | "tower" | "camp";
 };
 export type Squad = {
@@ -58,6 +59,10 @@ export type Raid = {
   // A garrison holds its ground: it fights whoever comes, never marches,
   // loots or eats land.
   guard?: boolean;
+  // A probe: a light skirmish that fights but does not eat land.
+  probe?: boolean;
+  // A lone scout that comes very slowly while you have no squad yet.
+  slow?: boolean;
 };
 // A scripted mission: enemy waves and friendly arrivals on a shared clock.
 export type WaveSpec = {
@@ -65,12 +70,14 @@ export type WaveSpec = {
   from: number;
   units: TroopType[];
   layout?: number[];
+  // A light skirmish between the written waves (see campaign.ts).
+  probe?: boolean;
   // "tower" picks the next standing tower (or the fort if none stand).
   target: "tower" | "fort" | number;
   strength: number;
 };
 export type Script = {
-  trigger: "start" | "tower";
+  trigger: "start" | "tower" | "squad";
   clock: number | null;
   waves: WaveSpec[];
   arrivals: { at: number; type: TroopType }[];
@@ -151,10 +158,17 @@ export type Battle = {
     lostTowers: number;
     script?: Script;
     camp?: { cell: number; needs: number; progress: number; taken: boolean };
+    // How much of each cell the Clan del Humo holds, 0–1 (see outpost.ts).
+    foe?: number[];
     // Towers waiting in the tray to be placed, and the spots a mission
     // suggests for them (any valid cell will do).
     kits?: number;
     suggested?: number[];
+    // When the next lone scout sets out while no squad stands yet.
+    nextScout?: number;
+    // The map template and where the clan's raids come in (free play).
+    map?: string;
+    entries?: number[];
   };
   lesson?: {
     index: number;
@@ -199,6 +213,8 @@ export type Battle = {
 // Height levels the attacker stands above its target.
 export const rise = (b: Battle, source: Squad, target: Squad) =>
   (b.cells[source.cell].height - b.cells[target.cell].height) / 15;
+// Cells nobody can stand on or cross.
+export const solid = (c: Cell) => c.terrain === "rock" || c.terrain === "water";
 export const allTroops = (b: Battle) => [
   ...b.squads,
   ...(b.fronts?.map((f) => f.troop) ?? []),
@@ -312,7 +328,7 @@ export function createBattle(mission = false): Battle {
 export function blocked(b: Battle, id: number, squad: string) {
   return (
     !b.cells[id] ||
-    b.cells[id].terrain === "rock" ||
+    solid(b.cells[id]) ||
     allTroops(b).some(
       (s) =>
         s.id !== squad &&
@@ -344,7 +360,7 @@ export function route(b: Battle, s: Squad, end: number): number[] {
         v =
           cost.get(n)! +
           1 +
-          (c.terrain === "forest" ? 0.8 : 0) +
+          (c.terrain === "forest" || c.terrain === "ford" ? 0.8 : 0) +
           Math.max(0, c.height - a.height) / 15;
       if (v < (cost.get(next) ?? Infinity)) {
         cost.set(next, v);
@@ -409,7 +425,7 @@ export function advance(b: Battle, dt: number) {
     s.progress +=
       dt /
       (1.4 +
-        (c.terrain === "forest" ? 1 : 0) +
+        (c.terrain === "forest" || c.terrain === "ford" ? 1 : 0) +
         Math.max(0, c.height - a.height) / 15);
     if (s.progress >= 1) {
       s.cell = next;
@@ -665,7 +681,7 @@ function stepRaid(b: Battle, r: Raid, dt: number) {
   const a = b.cells[e.cell],
     c = b.cells[next];
   e.facing = e.targetFacing = Math.atan2(c.y - a.y, c.x - a.x);
-  e.progress += dt / (r.phase === "retreat" ? 2 : 4.5);
+  e.progress += dt / (r.phase === "retreat" ? 2 : r.slow ? 12 : 4.5);
   if (e.progress >= 1) {
     e.cell = next;
     e.path.shift();
