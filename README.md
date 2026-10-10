@@ -17,7 +17,9 @@ Lo que es tuyo es la tierra, en azul con una frontera continua.
 - **Rinde:** la tierra que tienes trae tropas al patio: cuanta más, más rápido (como mucho, una cada 12 s). Expandirte da más tropas y más frontera que defender.
 - **Objetivos:** las misiones piden casillas («Domina 18 casillas», «Conserva 18 casillas») al pasar la última oleada. La cabecera muestra una barra con tus casillas y la meta marcada. Saquear el cuartel sigue siendo derrota inmediata.
 
-El modelo está en `src/tactics/outpost.ts` (`updateLand`, `held`, `eaten`).
+- **Se ve vivida:** la tierra que sostienes se va poblando: primero campos arados, después casas en algunas casillas. Cuando el enemigo se come una casilla poblada, arde (llamas y humo) y queda calcinada hasta que vuelva a poblarse. Cada tropa que llega sale de una de esas casas y camina hasta el patio. La tierra con la que empieza una misión ya está poblada.
+
+El modelo está en `src/tactics/outpost.ts` (`updateLand`, `held`, `eaten`, `settled`, `burning`).
 
 ## Presión visible: cuartel y oleadas
 

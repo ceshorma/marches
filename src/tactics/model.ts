@@ -120,7 +120,7 @@ export type Battle = {
     recruitAt: number;
     reserve: Record<TroopType, number>;
     arrivals: number;
-    lastArrival?: { type: TroopType; time: number };
+    lastArrival?: { type: TroopType; time: number; from?: number };
     // Campaign missions tune these; free play keeps the defaults.
     supply: TroopType[];
     supplyEvery: number;
@@ -128,6 +128,10 @@ export type Battle = {
     repelled: number;
     // Ownership of each cell, 0–1; held from 0.5 (see outpost.ts).
     land?: number[];
+    // How settled each cell is (fields, then houses), 0–1, and when it
+    // last caught fire.
+    settled?: number[];
+    burning?: number[];
     // Progress towards the next troop earned by held land.
     harvest?: number;
     // Arrivals lost because the fort was full.

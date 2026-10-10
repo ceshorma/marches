@@ -3,8 +3,10 @@ import type { TroopType } from "./combat";
 import { iconPaths } from "./icons";
 import {
   deploymentError,
+  BURN,
   FORT_CAP,
   HOLD,
+  hasHouse,
   eaten,
   gathering,
   queue,
@@ -1047,9 +1049,18 @@ export default function Board() {
           // Land: what is yours, with a crisp frontier; red where it is eaten.
           territory.clear();
           const land = b.outpost.land ?? [],
-            eating = eaten(b);
+            settled = b.outpost.settled ?? [],
+            burning = b.outpost.burning ?? [],
+            eating = eaten(b),
+            built = new Set([
+              b.outpost.fort,
+              ...b.outpost.sites.map((x) => x.cell),
+              ...(b.outpost.camp ? [b.outpost.camp.cell] : []),
+            ]);
           for (const c of b.cells) {
-            const v = land[c.id] ?? 0;
+            const v = land[c.id] ?? 0,
+              people = settled[c.id] ?? 0,
+              fire = b.time - (burning[c.id] ?? -Infinity);
             if (v > 0.02)
               territory
                 .poly(hex(c.x, c.y, R - 1))
@@ -1066,7 +1077,58 @@ export default function Board() {
                   )
                   .stroke({ color: BLUE, width: 2.5, alpha: 0.75 });
               });
-            if (eating.has(c.id) && v > 0.02) {
+            // Lived-in ground: furrowed fields, then a house on some cells.
+            if (people > 0.25 && !built.has(c.id)) {
+              const fields = c.terrain === "plain";
+              if (fields)
+                for (let j = -1; j <= 1; j++)
+                  territory
+                    .moveTo(c.x - 20 + j * 4, c.y + 10 + j * 7)
+                    .lineTo(c.x - 4 + j * 4, c.y + 2 + j * 7)
+                    .stroke({
+                      color: 0xa88a52,
+                      width: 1.6,
+                      alpha: Math.min(1, (people - 0.25) * 1.6) * 0.7,
+                    });
+              if (people > 0.7 && hasHouse(c.id)) {
+                const hx = c.x + 12,
+                  hy = c.y - 6;
+                territory
+                  .rect(hx - 6, hy - 3, 12, 9)
+                  .fill(0xeadfc6)
+                  .stroke({ color: 0x8a6e4b, width: 1 });
+                territory
+                  .poly([hx - 8, hy - 2, hx, hy - 9, hx + 8, hy - 2])
+                  .fill(0xa65d3f);
+              }
+            }
+            // Burnt ground stays dark until it is lived in again.
+            if (fire < 45 && people < 0.3 && !built.has(c.id))
+              territory
+                .ellipse(c.x - 6, c.y + 4, 15, 8)
+                .fill({ color: 0x4a4038, alpha: 0.22 * (1 - fire / 45) });
+            if (fire < BURN) {
+              // Flames, then smoke drifting up: the enemy is burning your people.
+              const k = 1 - fire / BURN;
+              for (let j = 0; j < 3; j++) {
+                const fx = c.x - 10 + j * 10,
+                  flick = Math.sin(b.time * 13 + j * 2) * 2.5,
+                  h = (10 + j * 3) * k + flick;
+                territory
+                  .poly([fx - 4, c.y + 6, fx, c.y + 6 - h, fx + 4, c.y + 6])
+                  .fill({ color: j % 2 ? 0xf2b33d : 0xe0682f, alpha: 0.9 * k });
+              }
+              for (let j = 0; j < 3; j++) {
+                const t = (fire * 0.6 + j / 3) % 1;
+                territory
+                  .circle(
+                    c.x + Math.sin(j * 2 + fire) * 5,
+                    c.y - 6 - t * 34,
+                    4 + t * 6,
+                  )
+                  .fill({ color: 0x6b6a63, alpha: 0.35 * (1 - t) });
+              }
+            } else if (eating.has(c.id) && v > 0.02) {
               territory
                 .poly(hex(c.x, c.y, R - 3))
                 .fill({ color: ENEMY, alpha: 0.08 + v * 0.1 });
@@ -1348,8 +1410,21 @@ export default function Board() {
             .moveTo(f.x - 112, f.y)
             .lineTo(f.x - 26, f.y)
             .stroke({ color: tone, width: 1, alpha: 0.35 });
+          // A new troop walks in from its house before taking its place.
+          const WALK = 1.8,
+            arrival = o.lastArrival,
+            walking =
+              arrival &&
+              arrival.from !== undefined &&
+              b.time - arrival.time < WALK
+                ? waiting.lastIndexOf(arrival.type)
+                : -1;
           spots.forEach((spot, i) => {
-            if (i >= waiting.length || (drag && drag.index === i)) {
+            if (
+              i >= waiting.length ||
+              i === walking ||
+              (drag && drag.index === i)
+            ) {
               overlay
                 .circle(spot.x, spot.y, 2.5)
                 .fill({ color: tone, alpha: 0.35 });
@@ -1357,6 +1432,7 @@ export default function Board() {
             }
             const fresh =
               o.lastArrival &&
+              o.lastArrival.from === undefined &&
               b.time - o.lastArrival.time < 0.6 &&
               waiting.lastIndexOf(o.lastArrival.type) === i
                 ? 1 - (b.time - o.lastArrival.time) / 0.6
@@ -1380,6 +1456,20 @@ export default function Board() {
               CREAM,
             );
           });
+          if (walking >= 0 && arrival && arrival.from !== undefined) {
+            const t = (b.time - arrival.time) / WALK,
+              e = t * t * (3 - 2 * t),
+              from = b.cells[arrival.from],
+              to = spots[walking],
+              x = from.x + (to.x - from.x) * e,
+              y = from.y + (to.y - from.y) * e - Math.sin(t * Math.PI) * 10,
+              g = yard();
+            overlay
+              .roundRect(x - 7 * g, y - 7 * g, 14 * g, 14 * g, 3.5 * g)
+              .fill(BLUE)
+              .stroke({ color: CREAM, width: 1.5 });
+            icon(overlay, arrival.type, x, y, 11 * g, CREAM);
+          }
           // Waves gather at their entry point before setting out.
           for (const g of gathering(b)) {
             const c = b.cells[g.from],

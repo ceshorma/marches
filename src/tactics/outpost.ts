@@ -225,7 +225,22 @@ function arrive(b: Battle, type: TroopType) {
     return;
   }
   o.reserve[type]++;
-  o.lastArrival = { type, time: b.time };
+  // The troop walks in from one of the settled houses, nearest first.
+  const f = b.cells[o.fort];
+  const home = (o.settled ?? [])
+    .map((v, id) => [v, id] as const)
+    .filter(([v, id]) => v > 0.7 && hasHouse(id) && id !== o.fort)
+    .map(([, id]) => id)
+    .sort(
+      (a, c) =>
+        Math.hypot(b.cells[a].x - f.x, b.cells[a].y - f.y) -
+        Math.hypot(b.cells[c].x - f.x, b.cells[c].y - f.y),
+    );
+  o.lastArrival = {
+    type,
+    time: b.time,
+    from: home.length ? home[o.arrivals % Math.min(3, home.length)] : undefined,
+  };
   notify(o, `+1 ${troopNames[type].toLowerCase()}`, o.fort, "good", b.time + 4);
 }
 // Seconds an enemy wave spends gathering in view before it sets out.
@@ -416,6 +431,14 @@ function updateCamp(b: Battle, camp: NonNullable<Outpost["camp"]>, dt: number) {
 // troops eat the land they stand on and next to; a tower whose own cell is
 // eaten falls. Land also yields troops: the more you hold, the faster they come.
 export const HOLD = 0.5;
+// Seconds for held ground to become fields and houses; how fast fire razes
+// it; how long the flames and smoke of a burning cell last.
+export const SETTLE = 24;
+const SCORCH = 0.6;
+export const BURN = 6;
+// Some settled cells grow a house; troops set out from them.
+export const hasHouse = (id: number) =>
+  (id * 7 + Math.floor(id / 18)) % 3 === 0;
 // Cell-seconds of held land per troop that arrives at the fort, and the
 // fastest arrivals can come however much land is held.
 export const HARVEST = 320;
@@ -468,7 +491,13 @@ function supported(b: Battle) {
 export function settleLand(b: Battle) {
   const o = b.outpost!;
   o.land = b.cells.map(() => 0);
-  for (const id of supported(b).keys()) o.land[id] = 1;
+  // Land already held when a mission starts is already lived in.
+  o.settled = b.cells.map(() => 0);
+  o.burning = b.cells.map(() => -Infinity);
+  for (const id of supported(b).keys()) {
+    o.land[id] = 1;
+    if (b.cells[id].terrain !== "rock") o.settled[id] = 1;
+  }
 }
 export const held = (b: Battle) =>
   (b.outpost?.land ?? []).filter((v) => v >= HOLD).length;
@@ -495,14 +524,30 @@ function updateLand(b: Battle, dt: number) {
     for (const n of adjacent(r.troop.cell))
       eating.set(n, (eating.get(n) ?? 0) + EAT_NEAR);
   }
+  o.settled ??= b.cells.map(() => 0);
+  o.burning ??= b.cells.map(() => -Infinity);
+  const settled = o.settled,
+    burning = o.burning;
   for (let id = 0; id < land.length; id++) {
     const eat = eating.get(id);
     if (eat) {
       const resist = towers.has(id) || id === o.fort ? TOWER_RESIST : 1;
       land[id] = Math.max(0, land[id] - eat * resist * dt);
-    } else if (from.has(id)) {
-      if (b.time >= from.get(id)!) land[id] = Math.min(1, land[id] + GROW * dt);
-    } else land[id] = Math.max(0, land[id] - FADE * dt);
+      // Settled ground burns where the enemy stands; what was built is lost.
+      if (settled[id] > 0.05) {
+        if (b.time - burning[id] > BURN) burning[id] = b.time;
+        settled[id] = Math.max(0, settled[id] - SCORCH * dt);
+      }
+    } else {
+      if (from.has(id)) {
+        if (b.time >= from.get(id)!)
+          land[id] = Math.min(1, land[id] + GROW * dt);
+      } else land[id] = Math.max(0, land[id] - FADE * dt);
+      // Held ground is slowly settled: fields first, then houses.
+      if (land[id] >= HOLD && b.cells[id].terrain !== "rock")
+        settled[id] = Math.min(1, settled[id] + dt / SETTLE);
+      else settled[id] = Math.max(0, settled[id] - dt * 0.1);
+    }
   }
   // A tower whose own ground is eaten falls.
   for (const s of o.sites)
