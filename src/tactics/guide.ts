@@ -25,12 +25,14 @@ const tone = (value: number) =>
   value > 1.1 ? "good" : value < 0.9 ? "danger" : null;
 export function guide(
   b: Battle,
-  ui: { selected: string | null; deployCell: number | null },
-): { marks: Mark[]; readings: Reading[] } {
+  ui: { selected: string | null; held: TroopType | null },
+): { marks: Mark[]; readings: Reading[]; yard: boolean } {
   const o = b.outpost,
     marks: Mark[] = [],
     readings: Reading[] = [];
-  if (!o) return { marks, readings };
+  // Deploying always starts at the yard: when it is the next step, it pulses.
+  let yard = false;
+  if (!o) return { marks, readings, yard };
   const raids = activeRaids(b).filter((r) => r.phase !== "retreat");
   const selected = b.squads.find((u) => u.id === ui.selected);
 
@@ -76,7 +78,8 @@ export function guide(
       marks.push({ cell: s.cell, tone: "danger", style: "pulse" });
 
   // The next step, only when nothing is under attack.
-  if (raids.length || ui.deployCell !== null) return { marks, readings };
+  // With a troop in hand the board shows where it can go instead.
+  if (raids.length || ui.held) return { marks, readings, yard };
   const reserve = total(o.reserve);
   const deployNear = (anchor: number) =>
     adjacent(anchor)
@@ -94,13 +97,9 @@ export function guide(
       s.builtAt > 0 &&
       b.time - s.builtAt < 10,
   );
-  if (!b.squads.length && reserve > 0) {
-    const [id] = deployNear(o.fort);
-    if (id !== undefined) marks.push({ cell: id, tone: "go", style: "pulse" });
-  } else if (fresh && reserve > 0) {
-    for (const id of deployNear(fresh.cell))
-      marks.push({ cell: id, tone: "go", style: "pulse" });
-  } else if (
+  if ((!b.squads.length || fresh) && reserve > 0 && deployNear(o.fort).length)
+    yard = true;
+  else if (
     o.camp &&
     !o.camp.taken &&
     o.sites.some((s) => s.cell === o.camp!.needs && s.active)
@@ -125,5 +124,5 @@ export function guide(
       if (idle) marks.push({ cell: idle.cell, tone: "go", style: "pulse" });
     }
   }
-  return { marks, readings };
+  return { marks, readings, yard };
 }

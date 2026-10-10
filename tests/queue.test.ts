@@ -66,3 +66,17 @@ test("dropping a waiting troop on a slot reinforces that exact position", () => 
   assert.equal(useTactics.getState().selected, u.id);
   assert.equal(waiting(useTactics.getState().battle.outpost!), 0);
 });
+test("a troop in hand is placed by the next drop and cleared by selecting", () => {
+  useTactics.setState({ scenario: "campaign", missionIndex: 0, unlocked: 0 });
+  useTactics.getState().reset();
+  const g = useTactics.getState();
+  g.hold("shield");
+  assert.equal(useTactics.getState().held, "shield");
+  assert.equal(useTactics.getState().selected, null);
+  g.select(null);
+  assert.equal(useTactics.getState().held, null);
+  g.hold("shield");
+  g.dropTroop(cell(4, 8), "shield");
+  assert.equal(useTactics.getState().held, null);
+  assert.equal(useTactics.getState().battle.squads.length, 1);
+});

@@ -1,4 +1,3 @@
-import { deploymentError } from "./outpost";
 import { missions, waveProgress } from "./campaign";
 import { FormationGrid } from "./Formation";
 import { TroopIcon } from "./icons";
@@ -27,7 +26,8 @@ export default function TacticalApp() {
     [generation, setGeneration] = useState(0),
     [help, setHelp] = useState(false),
     [recruitType, setRecruitType] = useState<TroopType>("shield"),
-    [picked, setPicked] = useState<number | null>(null);
+    [picked, setPicked] = useState<number | null>(null),
+    [showFormation, setShowFormation] = useState(false);
   const outpost = s.battle.outpost;
   const lesson = s.battle.lesson,
     mission = lesson ? missions[lesson.index] : null;
@@ -184,8 +184,6 @@ export default function TacticalApp() {
             className={s.selected === u.id ? "chosen" : ""}
             onClick={() => {
               s.select(u.id);
-              if (outpost && !deploymentError(s.battle, u.cell))
-                useTactics.setState({ deployCell: u.cell });
             }}
           >
             <Shield size={17} />
@@ -197,7 +195,10 @@ export default function TacticalApp() {
         ))}
       </div>
       {unit ? (
-        <section className="orders" aria-label="Órdenes de escuadrón">
+        <section
+          className={`orders ${showFormation ? "expanded" : ""}`}
+          aria-label="Órdenes de escuadrón"
+        >
           <div className="unit-title">
             <strong>{unit.name}</strong>
             {(unit.engaged || unit.routing) && (
@@ -208,6 +209,14 @@ export default function TacticalApp() {
             )}
             <span>{composition(unit)}</span>
           </div>
+          {/* Phones show the formation only on demand, to keep the map clear. */}
+          <button
+            className="formation-toggle"
+            aria-expanded={showFormation}
+            onClick={() => setShowFormation(!showFormation)}
+          >
+            Formación
+          </button>
           <FormationGrid
             squad={unit}
             picked={picked}

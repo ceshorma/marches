@@ -24,7 +24,7 @@ El modelo está en `src/tactics/outpost.ts` (`updateLand`, `held`, `eaten`).
 Como en Mini Metro, la presión se acumula en el mapa donde ocurre:
 
 - **Tropas esperando.** Los refuerzos llegan al patio junto al cuartel (a su oeste, fuera del anillo de despliegue) y esperan ahí, a la vista. Caben seis: el borde del patio pasa de azul a ámbar cuando queda un sitio y a rojo, latiendo, cuando está lleno. Una tropa que llega con el patio lleno se retira y se pierde.
-- **Arrastrar para desplegar.** Arrastra una tropa del patio a una casilla azul libre (escuadrón nuevo) o al hueco concreto de un escuadrón que puede reforzarse donde está. Mientras arrastras se iluminan los destinos válidos, y la tropa lleva un anillo verde o rojo según cómo le iría contra la próxima oleada. Tocar una tropa del patio abre el menú de despliegue junto al cuartel.
+- **Lo que tocas primero decide el verbo.** Desplegar empieza siempre en el patio: arrastra una tropa a una casilla azul libre (escuadrón nuevo) o al hueco de un escuadrón que puede reforzarse donde está; o tócala para tomarla en la mano (anillo ámbar) y toca después el destino. Con una tropa en la mano se iluminan los destinos válidos y la tropa lleva un anillo verde o rojo según cómo le iría contra la próxima oleada; tocar otro sitio la devuelve. Mover empieza siempre en un escuadrón: selecciónalo y toca cualquier casilla, azul o no. En reposo las casillas azules apenas se marcan, y el patio late cuando desplegar es el siguiente paso.
 - **Huecos visibles.** Las posiciones vacías de cada escuadrón se dibujan como casillas con borde.
 - **La oleada se reúne.** Durante sus últimos 15 segundos, la próxima incursión se va juntando a la vista en su punto de entrada, con un anillo rojo que se llena; al completarse, sale. Si está fuera de la pantalla, una flecha en el borde lo indica.
 
@@ -40,7 +40,7 @@ Cada escuadrón tiene seis posiciones: dos columnas (frente y atrás) por tres f
 
 Un ciclo continuo sobre el mismo mapa:
 
-1. Arrastrar una tropa del patio del cuartel a una casilla azul para crear un escuadrón.
+1. Arrastrar (o tocar y luego colocar) una tropa del patio del cuartel en una casilla azul para crear un escuadrón.
 2. Ordenarle llegar a uno de tres emplazamientos. Permanecer quieto allí construye una torre en seis segundos; salir pausa la construcción. Una torre en pie es un nuevo punto de despliegue.
 3. Doce segundos después de la primera torre se reúne una incursión visible en el este. Puedes interceptarla, defender o abandonar la posición.
 4. Si la patrulla completa el saqueo, la torre cae. El emplazamiento se puede reconstruir.
@@ -144,9 +144,8 @@ Las mezclas promedian por integrante. En combate, un chevrón verde sobre la fic
 
 El mapa no usa textos para guiar: responde a lo que haces y a lo que ocurre (`src/tactics/guide.ts`).
 
-- **Siguiente paso:** late la casilla donde desplegar; luego, el escuadrón que espera; al seleccionarlo aparece la silueta de la torre que podría levantar. Al terminar una torre se iluminan las casillas desde donde ya se puede desplegar.
+- **Siguiente paso:** late el patio cuando toca desplegar; luego, el escuadrón que espera; al seleccionarlo aparece la silueta de la torre que podría levantar. Al terminar una torre vuelve a latir el patio: ya se puede desplegar también junto a ella.
 - **Lectura del enemigo:** al seleccionar un escuadrón, cada enemigo muestra un anillo verde con chevrones hacia arriba si lo vences, o rojo hacia abajo si te vence, según el tipo que golpearías, el lado por el que llegarías y la altura. En combate, el mismo anillo indica cómo va el choque.
 - **Peligro:** la torre o el cuartel al que se dirige una incursión late en rojo si nadie lo cubre, y más rápido mientras lo saquean.
 - **Acontecimientos:** el panel de reserva destella al llegar una tropa; una torre que cae, o una obra abandonada, laten en rojo.
 
-Las casillas azules siempre despliegan mientras quede reserva; para mover un escuadrón a una de ellas, arrástralo. El menú indica si crea un «Nuevo escuadrón» o refuerza uno existente, y se cierra solo cuando la reserva se vacía.

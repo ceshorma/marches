@@ -1,7 +1,6 @@
-import { matchup, slotsOf, troopTypes, troopNames, zoneSlots } from "./combat";
+import { matchup, slotsOf, zoneSlots } from "./combat";
 import type { TroopType } from "./combat";
-import { iconPaths, TroopIcon } from "./icons";
-import { FormationGrid } from "./Formation";
+import { iconPaths } from "./icons";
 import {
   deploymentError,
   FORT_CAP,
@@ -14,7 +13,7 @@ import {
 } from "./outpost";
 import { guide } from "./guide";
 import type { Tone } from "./guide";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef } from "react";
 import { Application, Container, Graphics, Text } from "pixi.js";
 import { useTactics } from "./state";
 import {
@@ -172,21 +171,7 @@ function token(
   }
 }
 export default function Board() {
-  const ref = useRef<HTMLDivElement>(null),
-    menuRef = useRef<HTMLDivElement>(null);
-  const game = useTactics();
-  const [type, setType] = useState<TroopType | null>(null),
-    [picked, setPicked] = useState<number | null>(null);
-  const reserve = game.battle.outpost?.reserve;
-  // Keep a type chosen that still has troops left.
-  const chosenType =
-    reserve && type && reserve[type] > 0
-      ? type
-      : (troopTypes.find((t) => (reserve?.[t] ?? 0) > 0) ?? null);
-  const recruitSquad =
-    game.deployCell === null
-      ? undefined
-      : game.battle.squads.find((u) => u.cell === game.deployCell);
+  const ref = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     let dead = false;
@@ -481,13 +466,20 @@ export default function Board() {
         // A waiting troop being dragged from the fort, in world coordinates.
         drag: { type: TroopType; index: number; x: number; y: number } | null =
           null;
+      // Yard spot of the troop in hand, and the pointer on the map (world).
+      let heldIndex = -1,
+        pointer = { x: -1e4, y: -1e4 };
       // Waiting troops stand in a small yard west of the fort, outside the
       // ring of deploy cells: two columns of three, nearest column first.
+      // Zoomed out (phones) the yard grows so each troop stays finger-sized.
+      const yard = () => Math.max(1, px(20) / 16);
       const queueSpots = () => {
-        const f = b.cells[b.outpost!.fort];
-        return Array.from({ length: FORT_CAP }, (_, k) => ({
-          x: f.x - (k < 3 ? 124 : 144),
-          y: f.y + ((k % 3) - 1) * 19,
+        const f = b.cells[b.outpost!.fort],
+          k = yard(),
+          centre = f.x - 112 - 22 * k;
+        return Array.from({ length: FORT_CAP }, (_, i) => ({
+          x: centre + (i < 3 ? 10 : -10) * k,
+          y: f.y + ((i % 3) - 1) * 19 * k,
         }));
       };
       // Where a formation slot of a squad sits on the map right now.
@@ -503,6 +495,9 @@ export default function Board() {
         b.squads.filter(
           (u) => u.members.length < 6 && !deploymentError(b, u.cell),
         );
+      // A distance on screen, in world units: touch targets stay finger-sized.
+      const px = (n: number) => n / (world.scale.x || 1);
+      const reach = () => Math.max(12, px(22));
       const drop = (p: { x: number; y: number }, type: TroopType) => {
         const s = useTactics.getState();
         for (const u of hosts()) {
@@ -510,12 +505,14 @@ export default function Board() {
           for (let slot = 0; slot < 6; slot++) {
             if (taken.includes(slot)) continue;
             const w = slotWorld(u, slot);
-            if (Math.hypot(w.x - p.x, w.y - p.y) < 12)
-              return s.dropTroop(u.cell, type, slot);
+            if (Math.hypot(w.x - p.x, w.y - p.y) < reach())
+              return (s.dropTroop(u.cell, type, slot), true);
           }
         }
         const id = cellAt(p);
-        if (id >= 0 && !deploymentError(b, id)) s.dropTroop(id, type);
+        if (id < 0 || deploymentError(b, id)) return false;
+        s.dropTroop(id, type);
+        return true;
       };
       const canvas = app.canvas;
       const transform = () => {
@@ -595,8 +592,43 @@ export default function Board() {
           const a = squadPosition(b, s);
           return Math.hypot(a.x - p.x, a.y - p.y) < R * 0.8;
         });
+      // Two fingers pinch to zoom around their midpoint.
+      const pointers = new Map<number, { x: number; y: number }>();
+      let lift = 0,
+        pinch: {
+          distance: number;
+          zoom: number;
+          anchor: { x: number; y: number };
+        } | null = null;
+      const pinchState = () => {
+        const [a, c] = [...pointers.values()],
+          rect = canvas.getBoundingClientRect();
+        return {
+          distance: Math.hypot(a.x - c.x, a.y - c.y) || 1,
+          mid: {
+            x: (a.x + c.x) / 2 - rect.left,
+            y: (a.y + c.y) / 2 - rect.top,
+          },
+        };
+      };
       const pointerDown = (e: PointerEvent) => {
-        if (e.button !== 0) return;
+        pointers.set(e.pointerId, { x: e.clientX, y: e.clientY });
+        if (pointers.size === 2) {
+          const { distance, mid } = pinchState();
+          pinch = {
+            distance,
+            zoom: useTactics.getState().zoom,
+            anchor: {
+              x: (mid.x - pan.x) / world.scale.x,
+              y: (mid.y - pan.y) / world.scale.y,
+            },
+          };
+          down = null;
+          drag = null;
+          canvas.setPointerCapture(e.pointerId);
+          return;
+        }
+        if (e.button !== 0 || pinch) return;
         canvas.style.cursor = "grabbing";
         const p = local(e),
           u = hit(p);
@@ -604,10 +636,13 @@ export default function Board() {
           const waiting = queue(b.outpost),
             spots = queueSpots(),
             index = waiting.findIndex(
-              (_, k) => Math.hypot(spots[k].x - p.x, spots[k].y - p.y) < 12,
+              (_, k) =>
+                Math.hypot(spots[k].x - p.x, spots[k].y - p.y) < reach(),
             );
-          if (index >= 0)
-            drag = { type: waiting[index], index, x: p.x, y: p.y };
+          if (index >= 0) {
+            lift = e.pointerType === "touch" ? px(48) : 0;
+            drag = { type: waiting[index], index, x: p.x, y: p.y - lift };
+          }
         }
         down = {
           x: e.clientX,
@@ -620,6 +655,23 @@ export default function Board() {
         canvas.setPointerCapture(e.pointerId);
       };
       const pointerMove = (e: PointerEvent) => {
+        pointer = local(e);
+        if (pointers.has(e.pointerId))
+          pointers.set(e.pointerId, { x: e.clientX, y: e.clientY });
+        if (pinch && pointers.size === 2) {
+          const { distance, mid } = pinchState(),
+            z = Math.max(
+              0.65,
+              Math.min(2.8, (pinch.zoom * distance) / pinch.distance),
+            );
+          useTactics.setState({ zoom: z });
+          lastZoom = z;
+          pan = {
+            x: mid.x - pinch.anchor.x * fit * z,
+            y: mid.y - pinch.anchor.y * fit * z,
+          };
+          return;
+        }
         hover = cellAt(local(e));
         const state = useTactics.getState();
         canvas.style.cursor = down
@@ -633,7 +685,7 @@ export default function Board() {
         if (drag && down) {
           const p = local(e);
           drag.x = p.x;
-          drag.y = p.y;
+          drag.y = p.y - lift;
           if (Math.hypot(e.clientX - down.x, e.clientY - down.y) > 6)
             moved = true;
           return;
@@ -650,44 +702,37 @@ export default function Board() {
         }
       };
       const pointerUp = (e: PointerEvent) => {
+        pointers.delete(e.pointerId);
+        if (pinch) {
+          // The gesture ends when both fingers are up; no tap is taken from it.
+          if (!pointers.size) pinch = null;
+          if (canvas.hasPointerCapture(e.pointerId))
+            canvas.releasePointerCapture(e.pointerId);
+          return;
+        }
         if (!down) return;
         const s = useTactics.getState(),
           p = local(e),
           id = cellAt(p),
           u = hit(p);
         if (drag) {
-          const type = drag.type;
+          const { type, index, x, y } = drag;
           drag = null;
-          if (moved) drop(p, type);
-          else {
-            // A tap on a waiting troop opens the tray next to the fort.
-            const candidate = adjacent(b.outpost!.fort).find(
-              (n) =>
-                !deploymentError(b, n) && !b.squads.some((q) => q.cell === n),
-            );
-            if (candidate !== undefined)
-              useTactics.setState({ deployCell: candidate, selected: null });
-          }
+          if (moved) drop({ x, y }, type);
+          // A tap picks the troop up (or puts it back); the next tap places it.
+          else
+            useTactics
+              .getState()
+              .hold(s.held === type && heldIndex === index ? null : type);
+          heldIndex = useTactics.getState().held ? index : -1;
+        } else if (s.held && !moved) {
+          // Holding a troop: tap a hole or a blue cell to place it, else drop it back.
+          if (!drop(p, s.held)) s.hold(null);
         } else if (moved && down.unit && id >= 0) s.move(id);
         else if (!moved) {
-          if (u) {
-            s.select(u.id);
-          } else if (
-            b.outpost &&
-            id >= 0 &&
-            !deploymentError(b, id) &&
-            Object.values(b.outpost.reserve).some((n) => n > 0)
-          ) {
-            // Blue cells always deploy while troops remain; drag to move there.
-            useTactics.setState({ deployCell: id, selected: null });
-          } else if (s.selected && id >= 0) s.move(id);
-          else if (b.outpost && id >= 0 && !deploymentError(b, id)) {
-            useTactics.setState({ deployCell: id, selected: null });
-          } else if (b.outpost && id === b.outpost.fort) {
-            const candidate = adjacent(id).find((n) => !deploymentError(b, n));
-            if (candidate !== undefined)
-              useTactics.setState({ deployCell: candidate, selected: null });
-          } else if (
+          if (u) s.select(u.id);
+          else if (s.selected && id >= 0) s.move(id);
+          else if (
             b.bases &&
             b.sectors?.some(
               (sector) =>
@@ -724,9 +769,12 @@ export default function Board() {
           y: e.clientY - rect.top - p.y * fit * z,
         };
       };
-      const cancel = () => {
+      const cancel = (e: PointerEvent) => {
+        pointers.delete(e.pointerId);
+        if (!pointers.size) pinch = null;
         hover = -1;
         down = null;
+        drag = null;
       };
       canvas.addEventListener("pointerdown", pointerDown);
       canvas.addEventListener("pointermove", pointerMove);
@@ -774,17 +822,6 @@ export default function Board() {
         transform();
         const s = useTactics.getState();
         overlay.clear();
-        if (menuRef.current && s.deployCell !== null) {
-          const c = b.cells[s.deployCell],
-            x = c.x * world.scale.x + pan.x,
-            y = c.y * world.scale.y + pan.y;
-          menuRef.current.style.left = `${Math.max(8, Math.min(app.screen.width - 244, x - 118))}px`;
-          menuRef.current.style.top = `${Math.max(80, Math.min(app.screen.height - 155, y + 34 * world.scale.y))}px`;
-          menuRef.current.style.visibility =
-            x < 0 || x > app.screen.width || y < 0 || y > app.screen.height
-              ? "hidden"
-              : "visible";
-        }
 
         if (
           b.sectors &&
@@ -961,28 +998,10 @@ export default function Board() {
           }
         }
         if (b.outpost) {
-          const available = Object.values(b.outpost.reserve).some((n) => n > 0);
-          const reduced = reducedMotion.matches;
-          const sinceArrival = b.time - (b.outpost.nextReinforcement - 30);
-          const pulse =
-            !reduced && sinceArrival >= 0 && sinceArrival < 2
-              ? Math.sin((sinceArrival * Math.PI) / 2) * 0.3
-              : 0;
+          // At rest deploy cells only show faint corners: deploying starts at
+          // the yard, and they light up while a troop is in hand.
           for (const c of b.cells) {
             if (deploymentError(b, c.id)) continue;
-            const active =
-              s.deployCell === c.id || (!s.selected && hover === c.id);
-            overlay
-              .poly(hex(c.x, c.y, R - 5))
-              .fill({
-                color: BLUE,
-                alpha: active ? 0.13 : 0.025 + pulse * 0.15,
-              })
-              .stroke({
-                color: BLUE,
-                width: active ? 2 : 1,
-                alpha: (available ? 0.35 : 0.16) + pulse,
-              });
             const points = hex(c.x, c.y, R - 5);
             for (let k = 0; k < 6; k++) {
               const j = k * 2,
@@ -998,11 +1017,7 @@ export default function Board() {
                   points[j] + (points[next] - points[j]) * 0.19,
                   points[j + 1] + (points[next + 1] - points[j + 1]) * 0.19,
                 )
-                .stroke({
-                  color: BLUE,
-                  width: 2,
-                  alpha: available ? 0.65 : 0.28,
-                });
+                .stroke({ color: BLUE, width: 1.5, alpha: 0.3 });
             }
           }
           const camp = b.outpost.camp;
@@ -1310,8 +1325,9 @@ export default function Board() {
                 : count >= FORT_CAP - 1
                   ? 0xc0913f
                   : BLUE;
+          const k = yard();
           overlay
-            .roundRect(f.x - 156, f.y - 31, 44, 62, 9)
+            .roundRect(f.x - 112 - 44 * k, f.y - 31 * k, 44 * k, 62 * k, 9 * k)
             .fill({ color: CREAM, alpha: 0.9 })
             .stroke({
               color: tone,
@@ -1322,8 +1338,8 @@ export default function Board() {
             .moveTo(f.x - 112, f.y)
             .lineTo(f.x - 26, f.y)
             .stroke({ color: tone, width: 1, alpha: 0.35 });
-          spots.forEach((spot, k) => {
-            if (k >= waiting.length || (drag && drag.index === k)) {
+          spots.forEach((spot, i) => {
+            if (i >= waiting.length || (drag && drag.index === i)) {
               overlay
                 .circle(spot.x, spot.y, 2.5)
                 .fill({ color: tone, alpha: 0.35 });
@@ -1332,14 +1348,27 @@ export default function Board() {
             const fresh =
               o.lastArrival &&
               b.time - o.lastArrival.time < 0.6 &&
-              waiting.lastIndexOf(o.lastArrival.type) === k
+              waiting.lastIndexOf(o.lastArrival.type) === i
                 ? 1 - (b.time - o.lastArrival.time) / 0.6
                 : 0;
             overlay
-              .roundRect(spot.x - 8, spot.y - 8 - fresh * 6, 16, 16, 4)
+              .roundRect(
+                spot.x - 8 * k,
+                spot.y - (8 + fresh * 6) * k,
+                16 * k,
+                16 * k,
+                4 * k,
+              )
               .fill(BLUE)
               .stroke({ color: CREAM, width: 1.5 });
-            icon(overlay, waiting[k], spot.x, spot.y - fresh * 6, 12, CREAM);
+            icon(
+              overlay,
+              waiting[i],
+              spot.x,
+              spot.y - fresh * 6 * k,
+              12 * k,
+              CREAM,
+            );
           });
           // Waves gather at their entry point before setting out.
           for (const g of gathering(b)) {
@@ -1373,44 +1402,69 @@ export default function Board() {
               icon(overlay, unit, x, y, 12, CREAM);
             });
           }
-          if (drag) {
-            // Where the dragged troop can go: free deploy cells and the holes
-            // of squads that can be reinforced where they stand.
+          // A troop in hand (dragged, or picked up with a tap) lights up where
+          // it can go: free deploy cells and the holes of squads that can be
+          // reinforced where they stand.
+          const handType = drag?.type ?? s.held,
+            at = drag ?? pointer;
+          if (handType && !drag && heldIndex >= 0 && heldIndex < spots.length) {
+            const spot = spots[heldIndex];
+            overlay
+              .circle(spot.x, spot.y, 13 * k + beat * 2)
+              .stroke({ color: 0xe0a63c, width: 3 });
+          }
+          if (handType) {
             for (const c of b.cells) {
               if (
                 deploymentError(b, c.id) ||
                 b.squads.some((u) => u.cell === c.id)
               )
                 continue;
+              const over = cellAt(at) === c.id;
               overlay
                 .poly(hex(c.x, c.y, R - 4))
-                .fill({ color: BLUE, alpha: 0.08 + beat * 0.06 })
-                .stroke({ color: BLUE, width: 2, alpha: 0.6 });
+                .fill({ color: BLUE, alpha: over ? 0.22 : 0.08 + beat * 0.06 })
+                .stroke({ color: BLUE, width: over ? 3 : 2, alpha: 0.6 });
             }
             for (const u of hosts()) {
               const taken = slotsOf(u);
               for (let slot = 0; slot < 6; slot++) {
                 if (taken.includes(slot)) continue;
                 const w = slotWorld(u, slot),
-                  near = Math.hypot(w.x - drag.x, w.y - drag.y) < 12;
+                  near = Math.hypot(w.x - at.x, w.y - at.y) < reach();
                 overlay
                   .roundRect(w.x - 8, w.y - 8, 16, 16, 4)
                   .fill({ color: BLUE, alpha: near ? 0.5 : 0.15 + beat * 0.15 })
                   .stroke({ color: BLUE, width: near ? 2.5 : 1.5 });
               }
             }
-            // The ghost reads green or red against the next wave.
+            // The troop reads green or red against the next wave.
             const next = upcoming(b).find((e) => e.kind === "enemy");
-            const edge = next ? matchup([drag.type], next.units) : 1;
+            const edge = next ? matchup([handType], next.units) : 1;
             const ring = edge > 1.1 ? 0x3f7f4f : edge < 0.9 ? ENEMY : BLUE;
-            overlay
-              .circle(drag.x, drag.y, 15)
-              .stroke({ color: ring, width: 3 });
-            overlay
-              .roundRect(drag.x - 9, drag.y - 9, 18, 18, 4)
-              .fill(BLUE)
-              .stroke({ color: CREAM, width: 1.5 });
-            icon(overlay, drag.type, drag.x, drag.y, 14, CREAM);
+            const g = yard();
+            if (!drag) {
+              const spot = spots[heldIndex];
+              if (spot)
+                overlay
+                  .circle(spot.x, spot.y, 17 * k)
+                  .stroke({ color: ring, width: 2, alpha: 0.7 });
+            } else {
+              overlay
+                .circle(drag.x, drag.y, 15 * g)
+                .stroke({ color: ring, width: 3 });
+              overlay
+                .roundRect(
+                  drag.x - 9 * g,
+                  drag.y - 9 * g,
+                  18 * g,
+                  18 * g,
+                  4 * g,
+                )
+                .fill(BLUE)
+                .stroke({ color: CREAM, width: 1.5 });
+              icon(overlay, drag.type, drag.x, drag.y, 14 * g, CREAM);
+            }
           }
         }
         // Off-screen raids and forming waves show as arrows on the screen edge.
@@ -1453,8 +1507,22 @@ export default function Board() {
           danger: ENEMY,
           good: 0x3f7f4f,
         };
-        const { marks, readings } = guide(b, s),
+        const { marks, readings, yard: callYard } = guide(b, s),
           pulse = reducedMotion.matches ? 0.5 : (Math.sin(b.time * 4) + 1) / 2;
+        if (callYard && b.outpost) {
+          // Deploying starts here: the yard pulses when it is the next step.
+          const f = b.cells[b.outpost.fort],
+            k = yard();
+          overlay
+            .roundRect(
+              f.x - 112 - 44 * k - 5,
+              f.y - 31 * k - 5,
+              44 * k + 10,
+              62 * k + 10,
+              9 * k + 4,
+            )
+            .stroke({ color: BLUE, width: 2.5, alpha: 0.4 + pulse * 0.5 });
+        }
         for (const m of marks) {
           const c = b.cells[m.cell],
             color = tones[m.tone];
@@ -1519,68 +1587,6 @@ export default function Board() {
         className="tactical-canvas"
         aria-label="Tablero táctico de Valle Claro"
       />
-      {game.battle.outpost && game.deployCell !== null && (
-        <div
-          ref={menuRef}
-          className="map-recruit"
-          aria-label="Añadir tropas en esta celda"
-        >
-          <div className="map-recruit-heading">
-            <span className="recruit-title">
-              {(() => {
-                const unit = game.battle.squads.find(
-                  (u) => u.cell === game.deployCell,
-                );
-                return unit ? `Reforzar ${unit.name}` : "Nuevo escuadrón";
-              })()}
-            </span>
-            <button
-              aria-label="Cerrar tropas disponibles"
-              onClick={() => useTactics.setState({ deployCell: null })}
-            >
-              ×
-            </button>
-          </div>
-          <div className="recruit-body">
-            <div className="recruit-types" role="radiogroup" aria-label="Tropa">
-              {troopTypes.map((type) => (
-                <button
-                  key={type}
-                  role="radio"
-                  aria-checked={chosenType === type}
-                  aria-label={`${troopNames[type]}: ${game.battle.outpost!.reserve[type]} en reserva`}
-                  title={troopNames[type]}
-                  className={chosenType === type ? "chosen" : ""}
-                  disabled={game.battle.outpost!.reserve[type] === 0}
-                  onClick={() => {
-                    setType(type);
-                    setPicked(null);
-                  }}
-                >
-                  <TroopIcon type={type} size={22} />
-                  <b>{game.battle.outpost!.reserve[type]}</b>
-                </button>
-              ))}
-            </div>
-            <FormationGrid
-              squad={recruitSquad}
-              picked={picked}
-              ghost={chosenType}
-              disabled={!!deploymentError(game.battle, game.deployCell!)}
-              onSlot={(slot) => {
-                const taken = recruitSquad ? slotsOf(recruitSquad) : [];
-                if (picked !== null && recruitSquad) {
-                  // Second tap: move the picked member here.
-                  if (slot !== picked)
-                    game.arrange(recruitSquad.id, picked, slot);
-                  setPicked(null);
-                } else if (taken.includes(slot)) setPicked(slot);
-                else if (chosenType) game.placeTroop(chosenType, slot);
-              }}
-            />
-          </div>
-        </div>
-      )}
     </>
   );
 }

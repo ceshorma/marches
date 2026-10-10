@@ -21,8 +21,9 @@ type State = {
   battle: Battle;
   revision: number;
   selected: string | null;
-  deployCell: number | null;
-  placeTroop: (type: TroopType, slot?: number) => void;
+  // A waiting troop picked up from the yard: the next tap places it.
+  held: TroopType | null;
+  hold: (type: TroopType | null) => void;
   arrange: (squad: string, from: number, to: number) => void;
   dropTroop: (cell: number, type: TroopType, slot?: number) => void;
   selectedBase: "ally" | "enemy" | null;
@@ -70,7 +71,7 @@ export const useTactics = create<State>((set, get) => ({
   },
   revision: 0,
   selected: null,
-  deployCell: null,
+  held: null,
   selectedBase: null,
   paused: false,
   speed: 1,
@@ -80,16 +81,17 @@ export const useTactics = create<State>((set, get) => ({
   select: (selected) =>
     set({
       selected,
-      deployCell: null,
+      held: null,
       selectedBase: null,
       message: null,
     }),
+  hold: (held) => set({ held, selected: null, selectedBase: null }),
   dropTroop: (cell, type, slot) => {
     const s = get(),
       message = addReserveTroop(s.battle, cell, type, slot);
     set({
       message,
-      deployCell: null,
+      held: null,
       revision: s.revision + 1,
       ...(!message
         ? { selected: s.battle.squads.find((u) => u.cell === cell)!.id }
@@ -101,23 +103,6 @@ export const useTactics = create<State>((set, get) => ({
       u = s.battle.squads.find((u) => u.id === id);
     if (!u) return;
     set({ message: moveMember(u, from, to), revision: s.revision + 1 });
-  },
-  placeTroop: (type, slot) => {
-    const s = get();
-    if (s.deployCell === null) return;
-    const message = addReserveTroop(s.battle, s.deployCell, type, slot);
-    const left = Object.values(s.battle.outpost!.reserve).some((n) => n > 0);
-    set({
-      message,
-      revision: s.revision + 1,
-      ...(!message
-        ? {
-            selected: s.battle.squads.find((u) => u.cell === s.deployCell)!.id,
-            // Nothing more to add: close the tray so the map can guide again.
-            ...(left ? {} : { deployCell: null }),
-          }
-        : {}),
-    });
   },
   deploy: (type = "shield") => {
     const s = get();
@@ -134,7 +119,6 @@ export const useTactics = create<State>((set, get) => ({
     if (s.selected)
       set({
         message: order(s.battle, s.selected, cell),
-        deployCell: null,
         revision: s.revision + 1,
       });
   },
@@ -180,7 +164,7 @@ export const useTactics = create<State>((set, get) => ({
               ? createMission(get().missionIndex)
               : createBattle(true),
       selected: null,
-      deployCell: null,
+      held: null,
       selectedBase: null,
       paused: false,
       speed: 1,
