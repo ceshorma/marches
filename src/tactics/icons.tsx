@@ -1,7 +1,11 @@
 import type { TroopType } from "./combat";
 // One icon per troop type, shared by the map tokens (as vector paths) and the
-// interface (as SVG): lance, bow, horse head. Drawn on a 20 × 20 box.
-export const iconPaths: Record<TroopType, { d: string; fill?: boolean }[]> = {
+// interface (as SVG): lance, bow, horse head; and a tower for the ones that
+// wait in the tray to be placed. Drawn on a 20 × 20 box.
+export const iconPaths: Record<
+  TroopType | "tower",
+  { d: string; fill?: boolean }[]
+> = {
   // A spear behind a heater shield.
   shield: [
     { d: "M3 18 L16 5" },
@@ -18,6 +22,13 @@ export const iconPaths: Record<TroopType, { d: string; fill?: boolean }[]> = {
     { d: "M4.5 10 L16 10" },
     { d: "M18 10 L14.5 7.8 L14.5 12.2 Z", fill: true },
   ],
+  // A tower with merlons and a dark door.
+  tower: [
+    {
+      d: "M5 18.5 L5.6 7 L4 7 L4 2.5 L6.6 2.5 L6.6 4.5 L8.7 4.5 L8.7 2.5 L11.3 2.5 L11.3 4.5 L13.4 4.5 L13.4 2.5 L16 2.5 L16 7 L14.4 7 L15 18.5 Z",
+      fill: true,
+    },
+  ],
   // A horse head in profile, ears up, facing right.
   horse: [
     {
@@ -31,7 +42,7 @@ export function TroopIcon({
   size = 18,
   className,
 }: {
-  type: TroopType;
+  type: TroopType | "tower";
   size?: number;
   className?: string;
 }) {

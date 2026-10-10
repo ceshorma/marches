@@ -3,6 +3,7 @@ import {
   createScout,
   updateOutpost,
   addReserveTroop,
+  placeTower,
 } from "./outpost";
 import {
   createMission,
@@ -12,6 +13,7 @@ import {
   missions,
 } from "./campaign";
 import type { TroopType } from "./combat";
+import type { Item } from "./outpost";
 import { createFrontsBattle, spawnReinforcement } from "./fronts";
 import { create } from "zustand";
 import { createBattle, advance, order } from "./model";
@@ -20,10 +22,11 @@ type State = {
   battle: Battle;
   revision: number;
   selected: string | null;
-  // A waiting troop picked up from the yard: the next tap places it.
-  held: TroopType | null;
-  hold: (type: TroopType | null) => void;
+  // A waiting troop or tower picked up from the tray: the next tap places it.
+  held: Item | null;
+  hold: (item: Item | null) => void;
   dropTroop: (cell: number, type: TroopType) => void;
+  dropTower: (cell: number) => void;
   selectedBase: "ally" | "enemy" | null;
   deploy: (type?: TroopType) => void;
   paused: boolean;
@@ -95,6 +98,11 @@ export const useTactics = create<State>((set, get) => ({
         ? { selected: s.battle.squads.find((u) => u.cell === cell)!.id }
         : {}),
     });
+  },
+  dropTower: (cell) => {
+    const s = get(),
+      message = placeTower(s.battle, cell);
+    set({ message, held: null, revision: s.revision + 1 });
   },
   deploy: (type = "shield") => {
     const s = get();

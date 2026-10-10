@@ -6,14 +6,14 @@ import {
   missions,
   waveProgress,
 } from "../src/tactics/campaign";
-import { troopTypes } from "../src/tactics/combat";
 import {
   addReserveTroop,
-  deploymentError,
+  placeTower,
   updateOutpost,
   upcoming,
 } from "../src/tactics/outpost";
-import { adjacent, advance, allTroops, order } from "../src/tactics/model";
+import { advance, allTroops, order } from "../src/tactics/model";
+import { plain } from "./player";
 import { useTactics } from "../src/tactics/state";
 type B = ReturnType<typeof createMission>;
 const cell = (q: number, r: number) => r * 18 + q;
@@ -30,52 +30,17 @@ const run = (b: B, seconds: number, bot?: (b: B) => void) => {
   }
 };
 // A plain player: deploys whatever arrives, builds pending sites, keeps one
-// squad on each post and sends the rest to the tower under attack.
-function bot(b: B) {
-  const o = b.outpost!;
-  const posts = [
-    ...o.sites.filter((s) => s.active).map((s) => s.cell),
-    ...o.sites.filter((s) => !s.active).map((s) => s.cell),
-  ];
-  // Once the camp can be taken, the first (strongest) squad goes for it.
-  if (o.camp && o.sites.some((s) => s.cell === o.camp!.needs && s.active))
-    posts.unshift(o.camp.cell);
-  for (const type of troopTypes)
-    while (o.reserve[type] > 0) {
-      const host = b.squads.find(
-        (u) => u.members.length < 6 && !deploymentError(b, u.cell),
-      );
-      const free =
-        b.squads.length <= posts.length
-          ? adjacent(o.fort).find(
-              (id) =>
-                !deploymentError(b, id) && !b.squads.some((u) => u.cell === id),
-            )
-          : undefined;
-      const at = free ?? host?.cell;
-      if (at === undefined || addReserveTroop(b, at, type)) break;
-    }
-  const threatened = (b.raids ?? []).find(
-    (r) => r.phase === "approach",
-  )?.target;
-  b.squads.forEach((u, i) => {
-    if (u.path.length || u.engaged || u.routing) return;
-    const post =
-      i >= posts.length && threatened !== undefined
-        ? threatened
-        : posts[i % posts.length];
-    if (u.cell === post || adjacent(post).includes(u.cell)) return;
-    if (order(b, u.id, post))
-      for (const n of adjacent(post)) if (!order(b, u.id, n)) break;
-  });
-}
+// squad on each post (the strongest on the camp) and sends the rest to the
+// tower under attack.
+const bot = plain();
 test("campaign has six wave missions on the frontier map", () => {
   assert.equal(missions.length, 6);
   for (let i = 0; i < missions.length; i++) {
     const b = createMission(i);
     assert.ok(b.outpost!.script);
     assert.equal(b.lesson!.index, i);
-    assert.equal(b.raids!.length, 0);
+    // Only the camp's garrison (mission 6) is on the map at the start.
+    assert.equal(b.raids!.filter((r) => !r.guard).length, 0);
     assert.ok(waveProgress(b)!.total >= 2);
   }
 });
@@ -85,13 +50,16 @@ test("the first mission's clock waits for the tower, then shows what comes", () 
   assert.equal(b.outpost!.script!.clock, null);
   assert.deepEqual(upcoming(b), []);
   addReserveTroop(b, cell(4, 8), "shield");
+  // The tower waits in the tray: place it, then the squad builds it.
+  assert.equal(placeTower(b, cell(7, 8)), null);
   order(b, b.squads[0].id, cell(7, 8));
   run(b, 20);
   assert.ok(b.outpost!.sites[0].active);
   const next = upcoming(b);
   assert.equal(next[0].kind, "ally");
   const wave = next.find((e) => e.kind === "enemy")!;
-  assert.deepEqual(wave.units, ["shield", "shield"]);
+  // Riders first: the starting lancers beat them.
+  assert.deepEqual(wave.units, ["horse", "horse"]);
 });
 for (let i = 0; i < 6; i++)
   test(`mission ${i + 1} · a plain defence wins it`, () => {
@@ -109,6 +77,12 @@ for (const i of [1, 2, 3, 4, 5])
     run(b, 600);
     assert.equal(b.lesson!.status, "lost");
   });
+test("the wrong troops lose: lancers alone fall to the archers of mission 3", () => {
+  const b = createMission(2);
+  run(b, 600, plain(["shield"]));
+  assert.equal(b.lesson!.status, "lost");
+  assert.ok((b.fallen ?? []).some((f) => f.side === "ally"));
+});
 test("simultaneous waves arrive from opposite sides", () => {
   const b = createMission(4);
   run(b, 32);

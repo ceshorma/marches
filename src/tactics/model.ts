@@ -1,4 +1,4 @@
-import { attackDamage, zoneFrom } from "./combat";
+import { attackDamage, slotsOf, zoneFrom, zoneSlots } from "./combat";
 import type { TroopType } from "./combat";
 import { advanceFronts } from "./fronts";
 export const COLS = 18,
@@ -55,6 +55,9 @@ export type Raid = {
   // When the raid was destroyed in battle, and whether its spoils were taken.
   fell?: number;
   spoils?: boolean;
+  // A garrison holds its ground: it fights whoever comes, never marches,
+  // loots or eats land.
+  guard?: boolean;
 };
 // A scripted mission: enemy waves and friendly arrivals on a shared clock.
 export type WaveSpec = {
@@ -148,6 +151,10 @@ export type Battle = {
     lostTowers: number;
     script?: Script;
     camp?: { cell: number; needs: number; progress: number; taken: boolean };
+    // Towers waiting in the tray to be placed, and the spots a mission
+    // suggests for them (any valid cell will do).
+    kits?: number;
+    suggested?: number[];
   };
   lesson?: {
     index: number;
@@ -172,7 +179,14 @@ export type Battle = {
   controlClock?: number;
   bases?: { allyReady: number; enemyReady: number; sequence: number };
   // Raids destroyed in battle: what is left on the field for a while.
-  fallen?: { x: number; y: number; time: number; units: TroopType[] }[];
+  // Allied squads that break leave one fallen member ("ally").
+  fallen?: {
+    x: number;
+    y: number;
+    time: number;
+    units: TroopType[];
+    side?: "ally";
+  }[];
   strikes?: {
     x: number;
     y: number;
@@ -383,6 +397,9 @@ export function advance(b: Battle, dt: number) {
       if (!s.progress) {
         const alternative = route(b, s, s.path.at(-1)!);
         if (alternative.length) s.path = alternative;
+        // A broken squad with its way out blocked regroups where it stands,
+        // rather than waiting (and refusing orders) for ever.
+        else if (s.routing) s.path = [];
       }
       continue;
     }
@@ -415,6 +432,28 @@ export function squadPosition(b: Battle, s: Squad) {
   };
 }
 
+// A broken squad loses one member from the zone that took the last blow
+// (any member if that zone is empty). Returns true when none are left and
+// the squad is gone.
+export function casualty(b: Battle, s: Squad): boolean {
+  const slots = slotsOf(s),
+    zone = zoneSlots[s.lastZone ?? "front"];
+  let i = s.members.findIndex((_, k) => zone.includes(slots[k]));
+  if (i < 0) i = s.members.length - 1;
+  const [lost] = s.members.splice(i, 1);
+  s.layout = undefined;
+  b.fallen = [
+    ...(b.fallen ?? []).filter((f) => b.time - f.time < FALLEN),
+    { ...squadPosition(b, s), time: b.time, units: [lost], side: "ally" },
+  ];
+  if (s.members.length) return false;
+  b.squads = b.squads.filter((u) => u !== s);
+  return true;
+}
+// Base damage of each exchange: your squads, and the raiders. Raiders hit
+// hard enough that the wrong troop breaks and loses a member.
+export const DEFEND_HIT = 7,
+  RAID_HIT = 9;
 // Seconds the remains of a destroyed raid stay on the field.
 export const FALLEN = 30;
 // Combat is resolved in timed exchanges; effects are emitted only by real attacks.
@@ -509,12 +548,14 @@ function stepRaid(b: Battle, r: Raid, dt: number) {
         hold(s);
         s.targetFacing = Math.atan2(at.y - p.y, at.x - p.x);
       }
-      if (!s.cooldown) hit(s, e, 7, false);
+      if (!s.cooldown) hit(s, e, DEFEND_HIT, false);
     }
     // Both sides fire in the same exchange, even if this breaks cohesion.
-    if (!e.cooldown) hit(e, target, 5, true);
+    if (!e.cooldown) hit(e, target, RAID_HIT, true);
     for (const s of defenders)
       if (s.cohesion! <= 0) {
+        // Breaking costs a member, from the side that was struck.
+        if (casualty(b, s)) continue;
         s.routing = true;
         s.engaged = undefined;
         s.disengaging = true;
@@ -539,8 +580,9 @@ function stepRaid(b: Battle, r: Raid, dt: number) {
       }
   } else {
     if (r.phase === "fight")
-      r.phase =
-        r.outcome === "raided"
+      r.phase = r.guard
+        ? "approach"
+        : r.outcome === "raided"
           ? "retreat"
           : e.cell === (r.target ?? 8 * COLS + 14) && !e.path.length
             ? "loot"
@@ -554,7 +596,7 @@ function stepRaid(b: Battle, r: Raid, dt: number) {
   }
   r.pressure = 1 - e.cohesion / 100;
   if (e.cohesion <= 0) return destroy();
-  if (r.phase === "fight") return;
+  if (r.phase === "fight" || r.guard) return;
   if (r.phase === "loot") {
     const take = Math.min(r.supplies, dt * 4);
     r.supplies -= take;
@@ -589,6 +631,15 @@ function stepRaid(b: Battle, r: Raid, dt: number) {
             .map((n) => route(b, e, n))
             .filter((p) => p.length)
             .sort((p, q) => p.length - q.length)[0] ?? [];
+      // Beside a target held by troops it cannot fight (broken ones): it
+      // sacks the ground there instead of waiting for ever.
+      if (
+        !e.path.length &&
+        r.phase === "approach" &&
+        !r.guard &&
+        adjacent(goal).includes(e.cell)
+      )
+        r.phase = "loot";
     }
   }
   if (!e.path.length) return;

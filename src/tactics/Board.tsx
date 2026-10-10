@@ -1,5 +1,4 @@
 import { slotsOf, zoneSlots } from "./combat";
-import type { TroopType } from "./combat";
 import { iconPaths } from "./icons";
 import * as art from "./art";
 import {
@@ -12,8 +11,10 @@ import {
   enemyCamps,
   gathering,
   queue,
+  towerError,
   waiting as waitingCount,
 } from "./outpost";
+import type { Item } from "./outpost";
 import { clash, guide, reasons } from "./guide";
 import type { Tone } from "./guide";
 import { useEffect, useRef } from "react";
@@ -60,6 +61,8 @@ function text(
   t.position.set(x, y);
   parent.addChild(t);
 }
+// Screen pixels the tray takes on the left edge.
+const TRAY = 80;
 const ENEMY = 0xb4544b,
   GOOD = 0x3f7f4f,
   // Clan del Humo tokens: soot, with the notch and cohesion ring in ember red.
@@ -86,10 +89,10 @@ const parsed = Object.fromEntries(
       ),
     })),
   ]),
-) as Record<TroopType, { fill: boolean; cmds: Cmd[] }[]>;
+) as Record<Item, { fill: boolean; cmds: Cmd[] }[]>;
 function icon(
   g: Graphics,
-  type: TroopType,
+  type: Item,
   x: number,
   y: number,
   size: number,
@@ -333,7 +336,7 @@ export default function Board() {
         const g = new Graphics();
         base.addChild(g);
         if (c.place === "fort") art.fort(g, c.x, c.y);
-        else if (c.place === "camp") art.camp(g, c.x, c.y);
+        // The rival camp is drawn with the clan's camps (see enemyCamps).
         else if (c.place === "village") {
           for (const dx of [-13, 12]) {
             g.rect(c.x + dx - 9, c.y - 12, 18, 26).fill(0xb87958);
@@ -394,23 +397,52 @@ export default function Board() {
         } | null = null,
         moved = false,
         // A waiting troop being dragged from the fort, in world coordinates.
-        drag: { type: TroopType; index: number; x: number; y: number } | null =
-          null;
+        drag: { type: Item; index: number; x: number; y: number } | null = null;
       // Yard spot of the troop in hand, and the pointer on the map (world).
       let heldIndex = -1,
         pointer = { x: -1e4, y: -1e4 };
-      // Waiting troops stand in a small yard west of the fort, outside the
-      // ring of deploy cells: two columns of three, nearest column first.
-      // Zoomed out (phones) the yard grows so each troop stays finger-sized.
-      const yard = () => Math.max(1, px(20) / 16);
+      // Waiting troops stand in a tray fixed to the left edge of the screen,
+      // two columns of three, whatever the camera does. It is drawn in world
+      // units (converted from screen pixels each frame) so dragging works the
+      // same as anywhere on the map. k: world units per tray unit.
+      const yard = () => px(20) / 16;
+      const kits = () => b.outpost?.kits ?? 0;
+      const trayRect = () => {
+        const k = yard(),
+          w = 44 * k,
+          // Towers to place sit in a row below the troops.
+          h = (62 + (kits() ? 22 : 0)) * k,
+          top = app.screen.width < 700 ? 170 : 130,
+          sy = Math.max(top, (top + app.screen.height - 100) / 2 - 31 * 1.25);
+        return {
+          x: (16 - pan.x) / world.scale.x,
+          y: (sy - pan.y) / world.scale.y,
+          w,
+          h,
+          k,
+        };
+      };
       const queueSpots = () => {
-        const f = b.cells[b.outpost!.fort],
-          k = yard(),
-          centre = f.x - 112 - 22 * k;
-        return Array.from({ length: FORT_CAP }, (_, i) => ({
-          x: centre + (i < 3 ? 10 : -10) * k,
-          y: f.y + ((i % 3) - 1) * 19 * k,
-        }));
+        const t = trayRect(),
+          k = t.k;
+        return [
+          ...Array.from({ length: FORT_CAP }, (_, i) => ({
+            x: t.x + t.w / 2 + (i < 3 ? 10 : -10) * k,
+            y: t.y + 31 * k + ((i % 3) - 1) * 19 * k,
+          })),
+          ...Array.from({ length: Math.min(2, kits()) }, (_, i) => ({
+            x: t.x + t.w / 2 + (i ? -10 : 10) * k,
+            y: t.y + 72 * k,
+          })),
+        ];
+      };
+      // What sits on each tray spot: waiting troops, then towers to place.
+      const trayItems = (): (Item | undefined)[] => {
+        const troops: (Item | undefined)[] = queue(b.outpost!);
+        return [
+          ...Array.from({ length: FORT_CAP }, (_, i) => troops[i]),
+          ...Array<Item>(Math.min(2, kits())).fill("tower"),
+        ];
       };
       // Squads that can take one more troop where they stand.
       const hosts = () =>
@@ -426,8 +458,14 @@ export default function Board() {
       // A distance on screen, in world units: touch targets stay finger-sized.
       const px = (n: number) => n / (world.scale.x || 1);
       const reach = () => Math.max(12, px(22));
-      const drop = (p: { x: number; y: number }, type: TroopType) => {
+      const drop = (p: { x: number; y: number }, type: Item) => {
         const s = useTactics.getState();
+        if (type === "tower") {
+          const id = cellAt(p);
+          if (id < 0 || towerError(b, id)) return false;
+          s.dropTower(id);
+          return true;
+        }
         // Anywhere on a squad joins it; its formation arranges itself.
         const host = hostAt(p);
         if (host) return (s.dropTroop(host.cell, type), true);
@@ -448,16 +486,39 @@ export default function Board() {
         ) {
           lastW = app.screen.width;
           lastH = app.screen.height;
-          const narrow = lastW < 700,
-            // Once raids exist the whole frontier, east road included, is framed.
-            wide =
-              !!b.outpost && (!!b.outpost.camp || (b.lesson?.index ?? 0) >= 2);
-          fit = b.outpost
+          const narrow = lastW < 700;
+          // The frontier is framed whole: fort and yard, every site and the
+          // clan's camps, so the enemy is in view from the first frame.
+          const frame = b.outpost
+            ? [
+                b.outpost.fort,
+                ...b.outpost.sites.map((x) => x.cell),
+                ...enemyCamps(b),
+              ]
+                .map((id) => b.cells[id])
+                .reduce(
+                  (box, c) => ({
+                    x0: Math.min(box.x0, c.x - R),
+                    x1: Math.max(box.x1, c.x + R),
+                    y0: Math.min(box.y0, c.y - R),
+                    y1: Math.max(box.y1, c.y + R * 1.5),
+                  }),
+                  {
+                    x0: Infinity,
+                    x1: -Infinity,
+                    y0: Infinity,
+                    y1: -Infinity,
+                  },
+                )
+            : null;
+          fit = frame
             ? narrow
               ? 0.6
               : Math.min(
-                  (lastW - 60) / (DX * (wide ? 19 : 16)),
-                  (lastH - 180) / (R * (wide ? 17 : 14)),
+                  // The tray takes the left edge of the screen.
+                  (lastW - 60 - TRAY) / (frame.x1 - frame.x0),
+                  (lastH - 200) / (frame.y1 - frame.y0),
+                  1.25,
                 )
             : b.fronts
               ? Math.min((lastW - 50) / (DX * 18), (lastH - 170) / (R * 18))
@@ -466,21 +527,12 @@ export default function Board() {
           pan = b.outpost
             ? {
                 x: narrow
-                  ? // Phones: keep the whole yard west of the fort in view.
-                    Math.max(
-                      lastW / 2 - DX * 3.8 * z,
-                      16 -
-                        (b.cells[b.outpost.fort].x -
-                          112 -
-                          44 * Math.max(1, 20 / (16 * z))) *
-                          z,
-                    )
-                  : lastW / 2 - DX * (wide ? 8.75 : 3.8) * z,
+                  ? // Phones: the fort just right of the tray, the frontier ahead.
+                    TRAY + 8 - (b.cells[b.outpost.fort].x - R * 1.2) * z
+                  : (lastW + TRAY) / 2 - ((frame!.x0 + frame!.x1) / 2) * z,
                 y: narrow
                   ? (lastH + 120) / 2 - R * 9 * z
-                  : wide
-                    ? (lastH + 60) / 2 - R * 8.25 * z
-                    : lastH / 2 - R * 12 * z,
+                  : (lastH + 90) / 2 - ((frame!.y0 + frame!.y1) / 2) * z,
               }
             : {
                 x: lastW / 2 - DX * (b.fronts ? 8.75 : 14.5) * z,
@@ -573,15 +625,16 @@ export default function Board() {
         const p = local(e),
           u = hit(p);
         if (b.outpost) {
-          const waiting = queue(b.outpost),
+          const items = trayItems(),
             spots = queueSpots(),
-            index = waiting.findIndex(
-              (_, k) =>
+            index = items.findIndex(
+              (item, k) =>
+                !!item &&
                 Math.hypot(spots[k].x - p.x, spots[k].y - p.y) < reach(),
             );
           if (index >= 0) {
             lift = e.pointerType === "touch" ? px(48) : 0;
-            drag = { type: waiting[index], index, x: p.x, y: p.y - lift };
+            drag = { type: items[index]!, index, x: p.x, y: p.y - lift };
           }
         }
         down = {
@@ -1045,6 +1098,22 @@ export default function Board() {
                   .stroke({ color: ENEMY, width: 1.2, alpha: 0.45 });
             }
           }
+          // Spots the mission suggests for the towers still in the tray:
+          // a faint ring of stones, no flag yet.
+          if (b.outpost.kits)
+            for (const id of b.outpost.suggested ?? []) {
+              if (b.outpost.sites.some((x) => x.cell === id)) continue;
+              const c = b.cells[id];
+              overlay
+                .poly(hex(c.x, c.y, R - 4))
+                .stroke({ color: BLUE, width: 1.5, alpha: 0.3 });
+              for (let i = 0; i < 8; i++) {
+                const a = (i * Math.PI) / 4;
+                overlay
+                  .circle(c.x + Math.cos(a) * 13, c.y + Math.sin(a) * 13, 2.4)
+                  .fill({ color: art.P.stone, alpha: 0.7 });
+              }
+            }
           for (const site of b.outpost.sites) {
             const c = b.cells[site.cell];
             if (site.active) art.tower(overlay, c.x, c.y);
@@ -1068,11 +1137,6 @@ export default function Board() {
               } else art.emplacement(overlay, c.x, c.y);
             }
           }
-          // The rival camp's fire keeps smoking.
-          if (b.outpost.camp && !b.outpost.camp.taken) {
-            const c = b.cells[b.outpost.camp.cell];
-            art.smoke(overlay, c.x + 2, c.y + 2, b.time, 0.6);
-          }
         }
         // The Clan del Humo camps where its waves set out: always in view,
         // smouldering, and growing while a wave gathers there.
@@ -1095,13 +1159,14 @@ export default function Board() {
         for (const raid of activeRaids(b)) {
           const village = b.cells[raid.target ?? 8 * 18 + 14];
           const danger =
-            raid.phase === "loot" ||
-            (raid.phase === "approach" &&
-              Math.hypot(
-                squadPosition(b, raid.troop).x - village.x,
-                squadPosition(b, raid.troop).y - village.y,
-              ) <
-                DX * 3);
+            !raid.guard &&
+            (raid.phase === "loot" ||
+              (raid.phase === "approach" &&
+                Math.hypot(
+                  squadPosition(b, raid.troop).x - village.x,
+                  squadPosition(b, raid.troop).y - village.y,
+                ) <
+                  DX * 3));
           if (!b.outpost) {
             overlay
               .poly(hex(village.x, village.y, R - 2))
@@ -1177,14 +1242,19 @@ export default function Board() {
         for (const f of b.fallen ?? []) {
           const age = b.time - f.time;
           if (age > FALLEN) continue;
+          // Your fallen leave the march's colours; theirs, the clan's.
+          const ours = f.side === "ally";
           art.fallen(
             overlay,
-            f.x,
-            f.y,
-            Math.min(1, (FALLEN - age) / 8),
+            f.x + (ours ? 10 : 0),
+            f.y + (ours ? 12 : 0),
+            Math.min(1, (FALLEN - age) / 8) * (ours ? 0.8 : 1),
             f.time,
+            ours ? art.P.ally : art.P.soot,
+            ours ? 0x24506e : art.P.enemyDark,
           );
-          if (age < 1.2) art.rout(overlay, f.x, f.y, age / 1.2, f.units.length);
+          if (age < 1.2 && !ours)
+            art.rout(overlay, f.x, f.y, age / 1.2, f.units.length);
         }
         // Clashes: contested hexes tint and a crossed marker sits between foes.
         const clashes = new Set<string>();
@@ -1383,19 +1453,16 @@ export default function Board() {
                 : count >= FORT_CAP - 1
                   ? 0xc0913f
                   : BLUE;
-          const k = yard();
+          const tray = trayRect(),
+            k = tray.k;
           overlay
-            .roundRect(f.x - 112 - 44 * k, f.y - 31 * k, 44 * k, 62 * k, 9 * k)
+            .roundRect(tray.x, tray.y, tray.w, tray.h, 9 * k)
             .fill({ color: CREAM, alpha: 0.9 })
             .stroke({
               color: tone,
               width: 1.5 + (count >= FORT_CAP ? beat * 2 : 0),
               alpha: count ? 0.9 : 0.4,
             });
-          overlay
-            .moveTo(f.x - 112, f.y)
-            .lineTo(f.x - 26, f.y)
-            .stroke({ color: tone, width: 1, alpha: 0.35 });
           // A new troop walks in from its house before taking its place.
           // Longer walks (spoils carried in from the field) take longer.
           const arrival = o.lastArrival,
@@ -1418,12 +1485,9 @@ export default function Board() {
               b.time - arrival.time < WALK
                 ? waiting.lastIndexOf(arrival.type)
                 : -1;
+          const items = trayItems();
           spots.forEach((spot, i) => {
-            if (
-              i >= waiting.length ||
-              i === walking ||
-              (drag && drag.index === i)
-            ) {
+            if (!items[i] || i === walking || (drag && drag.index === i)) {
               overlay
                 .circle(spot.x, spot.y, 2.5)
                 .fill({ color: tone, alpha: 0.35 });
@@ -1444,11 +1508,11 @@ export default function Board() {
                 16 * k,
                 4 * k,
               )
-              .fill(BLUE)
+              .fill(items[i] === "tower" ? art.P.stoneDark : BLUE)
               .stroke({ color: CREAM, width: 1.5 });
             icon(
               overlay,
-              waiting[i],
+              items[i]!,
               spot.x,
               spot.y - fresh * 6 * k,
               12 * k,
@@ -1500,7 +1564,17 @@ export default function Board() {
               .circle(spot.x, spot.y, 13 * k + beat * 2)
               .stroke({ color: 0xe0a63c, width: 3 });
           }
-          if (handType) {
+          if (handType === "tower")
+            // A tower in hand: every cell where it could stand lights up.
+            for (const c of b.cells) {
+              if (towerError(b, c.id)) continue;
+              const over = cellAt(at) === c.id;
+              overlay
+                .poly(hex(c.x, c.y, R - 4))
+                .fill({ color: BLUE, alpha: over ? 0.22 : 0.05 + beat * 0.04 })
+                .stroke({ color: BLUE, width: over ? 3 : 1.5, alpha: 0.45 });
+            }
+          if (handType && handType !== "tower") {
             for (const c of b.cells) {
               if (
                 deploymentError(b, c.id) ||
@@ -1523,6 +1597,8 @@ export default function Board() {
                 .fill({ color: BLUE, alpha: near ? 0.2 : 0.06 + beat * 0.06 })
                 .stroke({ color: BLUE, width: near ? 3 : 2, alpha: 0.7 });
             }
+          }
+          if (handType) {
             // No verdict on the troop in hand: whether it was a good choice
             // shows in the fight (see the clash badges).
             const ring = BLUE;
@@ -1545,7 +1621,7 @@ export default function Board() {
                   18 * g,
                   4 * g,
                 )
-                .fill(BLUE)
+                .fill(drag.type === "tower" ? art.P.stoneDark : BLUE)
                 .stroke({ color: CREAM, width: 1.5 });
               icon(overlay, drag.type, drag.x, drag.y, 14 * g, CREAM);
             }
@@ -1559,6 +1635,43 @@ export default function Board() {
             .map((r) => squadPosition(b, r.troop)),
           ...gathering(b).map((g) => b.cells[g.from]),
         ];
+        // Camps out of view: a quiet soot marker on the edge, no pulse.
+        const inView = (x: number, y: number) => {
+          const sx = x * world.scale.x + pan.x,
+            sy = y * world.scale.y + pan.y;
+          return (
+            sx >= 0 &&
+            sx <= app.screen.width &&
+            sy >= (app.screen.width < 700 ? 160 : 120) &&
+            sy <= app.screen.height - 90
+          );
+        };
+        const forming = new Set(gathering(b).map((g) => g.from));
+        for (const id of enemyCamps(b)) {
+          const c = b.cells[id];
+          if (forming.has(id) || inView(c.x, c.y)) continue;
+          const sx = c.x * world.scale.x + pan.x,
+            sy = c.y * world.scale.y + pan.y,
+            top = app.screen.width < 700 ? 160 : 120,
+            cx = Math.max(24, Math.min(app.screen.width - 24, sx)),
+            cy = Math.max(top, Math.min(app.screen.height - 90, sy)),
+            a = Math.atan2(sy - cy, sx - cx);
+          hud
+            .circle(cx, cy, 13)
+            .fill({ color: CREAM, alpha: 0.9 })
+            .stroke({ color: CLAN, width: 1.5 });
+          hud.poly([cx - 6, cy + 4, cx, cy - 5, cx + 6, cy + 4]).fill(CLAN);
+          hud
+            .poly([
+              cx + Math.cos(a) * 17,
+              cy + Math.sin(a) * 17,
+              cx + Math.cos(a + 0.5) * 12,
+              cy + Math.sin(a + 0.5) * 12,
+              cx + Math.cos(a - 0.5) * 12,
+              cy + Math.sin(a - 0.5) * 12,
+            ])
+            .fill(CLAN);
+        }
         for (const threat of threats) {
           const sx = threat.x * world.scale.x + pan.x,
             sy = threat.y * world.scale.y + pan.y,
@@ -1595,15 +1708,15 @@ export default function Board() {
           pulse = reducedMotion.matches ? 0.5 : (Math.sin(b.time * 4) + 1) / 2;
         if (callYard && b.outpost) {
           // Deploying starts here: the yard pulses when it is the next step.
-          const f = b.cells[b.outpost.fort],
-            k = yard();
+          const t = trayRect(),
+            k = t.k;
           overlay
             .roundRect(
-              f.x - 112 - 44 * k - 5,
-              f.y - 31 * k - 5,
-              44 * k + 10,
-              62 * k + 10,
-              9 * k + 4,
+              t.x - 5 * k,
+              t.y - 5 * k,
+              t.w + 10 * k,
+              t.h + 10 * k,
+              13 * k,
             )
             .stroke({ color: BLUE, width: 2.5, alpha: 0.4 + pulse * 0.5 });
         }

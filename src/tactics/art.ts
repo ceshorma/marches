@@ -601,7 +601,15 @@ export function tracks(
 // ── Battle ────────────────────────────────────────────────────────────────
 // Where a raid was destroyed: trampled ground, broken spears and bows, and
 // its banner fallen in the dirt. k fades it out (1 = fresh).
-export function fallen(g: Graphics, x: number, y: number, k: number, seed = 0) {
+export function fallen(
+  g: Graphics,
+  x: number,
+  y: number,
+  k: number,
+  seed = 0,
+  cloth: number = P.soot,
+  shield: number = P.enemyDark,
+) {
   g.ellipse(x, y + 3, 22, 13).fill({ color: P.soil, alpha: 0.35 * k });
   for (let j = 0; j < 6; j++) {
     const a = rnd(seed, j) * Math.PI,
@@ -614,7 +622,7 @@ export function fallen(g: Graphics, x: number, y: number, k: number, seed = 0) {
   }
   // A round shield left on the ground.
   g.circle(x + 9, y + 5, 3.6)
-    .fill({ color: P.enemyDark, alpha: 0.8 * k })
+    .fill({ color: shield, alpha: 0.8 * k })
     .stroke(line(k, 0.8));
   // The banner, pole and cloth lying flat.
   g.moveTo(x - 16, y + 9)
@@ -632,7 +640,7 @@ export function fallen(g: Graphics, x: number, y: number, k: number, seed = 0) {
     x + 4,
     y + 2,
   ])
-    .fill({ color: P.soot, alpha: 0.85 * k })
+    .fill({ color: cloth, alpha: 0.85 * k })
     .stroke(line(k, 0.8));
 }
 // The moment a raid breaks: its men scatter outward and fade (t = 0 → 1).

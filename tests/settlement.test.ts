@@ -5,6 +5,7 @@ import {
   BURN,
   SETTLE,
   addReserveTroop,
+  placeTower,
   hasHouse,
   updateOutpost,
 } from "../src/tactics/outpost";
@@ -28,6 +29,7 @@ test("new land is settled over time once held", () => {
   const b = createMission(0);
   b.outpost!.reserve.shield = 1;
   addReserveTroop(b, cell(4, 8), "shield");
+  placeTower(b, cell(7, 8));
   order(b, b.squads[0].id, cell(7, 8));
   run(b, 20);
   assert.ok(b.outpost!.sites[0].active);

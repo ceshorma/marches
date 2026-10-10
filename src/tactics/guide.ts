@@ -1,6 +1,7 @@
 import { heightBonus, matchup, struck, zoneFrom } from "./combat";
 import type { TroopType } from "./combat";
-import { deploymentError } from "./outpost";
+import { campSupported, deploymentError, towerError } from "./outpost";
+import type { Item } from "./outpost";
 import {
   activeRaids,
   adjacent,
@@ -61,7 +62,7 @@ export const clash = (b: Battle, ally: Squad, foe: Squad) =>
   tone(edge(b, ally, foe) / edge(b, foe, ally));
 export function guide(
   b: Battle,
-  ui: { selected: string | null; held: TroopType | null },
+  ui: { selected: string | null; held: Item | null },
 ): { marks: Mark[]; readings: Reading[]; yard: boolean } {
   const o = b.outpost,
     marks: Mark[] = [],
@@ -93,7 +94,7 @@ export function guide(
 
   // Danger: the cell each raid is heading for, faster while being sacked.
   for (const r of raids) {
-    if (r.target === undefined) continue;
+    if (r.target === undefined || r.guard) continue;
     const guarded = b.squads.some(
       (u) =>
         !u.routing &&
@@ -118,7 +119,12 @@ export function guide(
       marks.push({ cell: s.cell, tone: "danger", style: "pulse" });
 
   // The next step, only when nothing is under attack.
-  // With a troop in hand the board shows where it can go instead.
+  // A tower in hand: the mission's suggested spots show its silhouette.
+  if (ui.held === "tower")
+    for (const id of o.suggested ?? [])
+      if (!towerError(b, id))
+        marks.push({ cell: id, tone: "go", style: "ghost" });
+  // With something in hand the board shows where it can go instead.
   if (raids.length || ui.held) return { marks, readings, yard };
   const reserve = total(o.reserve);
   const deployNear = (anchor: number) =>
@@ -139,30 +145,26 @@ export function guide(
   );
   if ((!b.squads.length || fresh) && reserve > 0 && deployNear(o.fort).length)
     yard = true;
-  else if (
-    o.camp &&
-    !o.camp.taken &&
-    o.sites.some((s) => s.cell === o.camp!.needs && s.active)
-  ) {
+  else if (o.camp && !o.camp.taken && campSupported(b)) {
     if (!heading(o.camp.cell))
       marks.push({ cell: o.camp.cell, tone: "go", style: "pulse" });
   } else if (pending.length && !pending.some((s) => heading(s.cell))) {
     if (selected && !selected.routing) {
       const at = b.cells[selected.cell];
-      const site = o.camp
-        ? (pending.find((s) => s.cell === o.camp!.needs) ?? pending[0])
-        : pending
-            .slice()
-            .sort(
-              (a, c) =>
-                Math.hypot(b.cells[a.cell].x - at.x, b.cells[a.cell].y - at.y) -
-                Math.hypot(b.cells[c.cell].x - at.x, b.cells[c.cell].y - at.y),
-            )[0];
+      const site = pending
+        .slice()
+        .sort(
+          (a, c) =>
+            Math.hypot(b.cells[a.cell].x - at.x, b.cells[a.cell].y - at.y) -
+            Math.hypot(b.cells[c.cell].x - at.x, b.cells[c.cell].y - at.y),
+        )[0];
       marks.push({ cell: site.cell, tone: "go", style: "ghost" });
     } else {
       const idle = b.squads.find((u) => !u.path.length && !u.routing);
       if (idle) marks.push({ cell: idle.cell, tone: "go", style: "pulse" });
     }
-  }
+  } else if (!pending.length && (o.kits ?? 0) > 0 && b.squads.length)
+    // A tower waits in the tray: placing it is the next step.
+    yard = true;
   return { marks, readings, yard };
 }

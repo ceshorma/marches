@@ -170,14 +170,15 @@ test("withdrawing defenders lets enemy resume its objective", () => {
   assert.equal(b.raid!.outcome, "active");
   assert.ok(b.raid!.troop.path.length > 0 || b.raid!.phase === "loot");
 });
-test("a broken allied squad retreats and recovers, without permanent casualties", () => {
+test("a broken allied squad loses a member, retreats and recovers", () => {
   const b = contact();
   b.squads[0].cohesion = 1;
   run(b, 0.1);
   assert.equal(b.squads[0].routing, true);
+  assert.equal(b.squads[0].members.length, 5);
+  assert.ok(b.fallen!.some((f) => f.side === "ally"));
   assert.ok(order(b, "s1", 140));
   run(b, 40);
   assert.equal(b.squads[0].routing, false);
-  assert.equal(b.squads[0].members.length, 6);
   assert.ok(b.squads[0].cohesion! >= 60);
 });

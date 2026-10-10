@@ -2,7 +2,11 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import { clash, guide, reasons } from "../src/tactics/guide";
 import { createMission, updateMission } from "../src/tactics/campaign";
-import { addReserveTroop, updateOutpost } from "../src/tactics/outpost";
+import {
+  addReserveTroop,
+  placeTower,
+  updateOutpost,
+} from "../src/tactics/outpost";
 import { advance, order } from "../src/tactics/model";
 import type { Squad } from "../src/tactics/model";
 import type { TroopType } from "../src/tactics/combat";
@@ -25,6 +29,13 @@ test("signals answer each step of the first mission without words", () => {
   assert.equal(guide(b, { selected: null, held: "shield" }).yard, false);
   addReserveTroop(b, cell(4, 8), "shield");
   const id = b.squads[0].id;
+  // A tower waits in the tray: the tray pulses; in hand, the suggested spot
+  // shows its silhouette.
+  assert.equal(guide(b, idle).yard, true);
+  assert.deepEqual(guide(b, { selected: null, held: "tower" }).marks, [
+    { cell: cell(7, 8), tone: "go", style: "ghost" },
+  ]);
+  placeTower(b, cell(7, 8));
   // A squad waits: pulse it; once selected, show the tower it could build.
   assert.deepEqual(guide(b, idle).marks, [
     { cell: cell(4, 8), tone: "go", style: "pulse" },
@@ -40,6 +51,7 @@ test("a finished tower sends the player back to the yard", () => {
   const b = createMission(0);
   b.outpost!.reserve.shield = 2;
   addReserveTroop(b, cell(4, 8), "shield");
+  placeTower(b, cell(7, 8));
   order(b, b.squads[0].id, cell(7, 8));
   for (let i = 0; i < 600 && !b.outpost!.sites[0].active; i++) run(b, 0.05);
   run(b, 1);

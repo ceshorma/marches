@@ -13,18 +13,25 @@ Eres el oficial que recibe un cuartel aislado en la frontera. Cada misión es un
 
 ## Misiones
 
-Entradas enemigas: este (16,8), noreste (15,0), sureste (16,11), sur (7,11). Emplazamientos: oeste (7,8), norte (9,5), sur (11,9). L = lanceros, A = arqueros, C = caballería.
+Entradas enemigas: este (16,8), noreste (15,0), sureste (16,11), sur (7,11). Emplazamientos sugeridos: oeste (7,8), norte (9,5), sur (11,9). Las torres sin construir de cada misión llegan a la bandeja y pueden ir en cualquier casilla válida; el campamento rival se puede tomar con una torre propia a 5 casillas o menos. L = lanceros, A = arqueros, C = caballería.
 
 | # | Misión | Objetivo | Reloj | Oleadas | Llegadas | Qué enseña |
 |---|---|---|---|---|---|---|
-| 1 | La primera torre | Dominar 18 casillas | Empieza con la torre | 25 s E [L L] · 65 s E [L L A] | 10 s A | Desplegar, formar, construir, defender |
-| 2 | Dos caminos | Conservar 18 casillas | Inicio | 15 s E [L L] · 45 s S [C C] · 85 s E [L A] + S [C L] | C, L, A | Flancos: atacan por dos lados a la vez |
+| 1 | La primera torre | Dominar 18 casillas | Empieza con la torre | 25 s E [C C] · 65 s E [C C A] | 10 s A | Desplegar, construir, defender; el primer choque se gana (lanzas contra jinetes) |
+| 2 | Dos caminos | Conservar 18 casillas | Inicio | 15 s E [L L] · 45 s S [C C] · 85 s E [L A] + S [C L] | C, L, L, A | Flancos: atacan por dos lados a la vez |
 | 3 | Cada tropa su rival | Conservar 18 casillas | Inicio | 20 s [A×4] · 55 s [C×3] · 95 s [L×4], todas del E | L, L, A, A | Elegir la tropa que vence a cada oleada |
-| 4 | La loma del norte | Dominar 26 casillas | Inicio | 45 s NE [L L C] · 80 s E [A×3] · 115 s NE [C×3] · 150 s E [L L A A] | C, A, L | Construir en altura; recibir cuesta arriba |
-| 5 | La pinza | Dominar 30 casillas sin perder el cuartel | Inicio | De dos en dos: 30 s E+S · 75 s NE+SE · 125 s E+S | L, C, A, L | Repartir la defensa |
-| 6 | La línea del este | Tomar el campamento rival | Inicio | Cada 22 s desde E, NE o SE, hasta que cae el campamento | Cada 25 s | Pasar al ataque con la torre sur |
+| 4 | La loma del norte | Dominar 28 casillas | Inicio | 45 s NE [L L C] · 80 s E [A×3] · 115 s NE [C×3] · 150 s E [L L A A] | C, A, L | Construir en altura; recibir cuesta arriba |
+| 5 | La pinza | Dominar 36 casillas sin perder el cuartel | Inicio | De dos en dos: 30 s E+S · 75 s NE+SE · 125 s E+S | L, C, A, L | Repartir la defensa |
+| 6 | La línea del este | Tomar el campamento rival | Inicio | Cada 22 s desde E, NE o SE, hasta que cae el campamento; una guarnición [L L A A C C] guarda el camino | Cada 35 s | Pasar al ataque: vencer la guarnición y sostener el campamento |
 
-Las metas de tierra se comprueban al pasar la última oleada. Las oleadas con objetivo «torre» van rotando entre las torres en pie; si no queda ninguna, van al cuartel. Un cuartel saqueado es derrota. Además de las llegadas del guion, la tierra trae tropas (una cada 320/casillas segundos, como mucho una cada 12 s). Las tropas iniciales empiezan junto al cuartel: hay que llevarlas a defender.
+Las metas de tierra se comprueban al pasar la última oleada. Las oleadas con objetivo «torre» van rotando entre las torres en pie; si no queda ninguna, van al cuartel. Un cuartel saqueado es derrota. Además de las llegadas del guion, la tierra trae tropas (una cada 450/casillas segundos, como mucho una cada 18 s). Las tropas iniciales empiezan junto al cuartel: hay que llevarlas a defender.
+
+## Combate y balance
+
+- **Las bajas cuentan.** Un escuadrón que se quiebra pierde un integrante del lado por el que le golpearon (si ese lado está vacío, cualquiera) y queda en el suelo en azul. Sin integrantes, el escuadrón desaparece. Las incursiones se destruyen al quebrarse.
+- **El enfrentamiento equivocado pierde.** Las incursiones golpean con 9 (tú con 7) y tienen 50–80 de cohesión: con la tropa que les gana las destruyes; con la que pierde, te quiebran.
+- **El campamento rival (misión 6)** lo guarda una guarnición que no se mueve, no saquea ni come tierra: hay que vencerla. Después se toma sosteniéndolo 35 s; si el clan lo disputa avanza a un tercio, y si lo dejas la toma se pierde despacio. Mientras alguien lo ocupa, las oleadas van a por él, y una entrada ocupada no detiene una oleada: se forma al lado.
+- `scripts/sim.ts` juega todas las misiones con tres jugadores (sencillo, solo lanceros, quieto) e imprime cómo fue cada una. Objetivo: el sencillo gana todas con alguna baja; solo lanceros pierde de la 3 en adelante; quieto pierde de la 2 en adelante; la misión 6 dura varios minutos.
 
 ## Implementación
 
@@ -32,7 +39,7 @@ Las metas de tierra se comprueban al pasar la última oleada. Las oleadas con ob
 - `src/tactics/outpost.ts`: guion sobre el reloj, varias incursiones a la vez (`b.raids`), saqueo de torres y cuartel, `upcoming()` para la línea de tiempo, despliegue sobre un escuadrón (`addReserveTroop`) con formación automática y botín de las incursiones destruidas.
 - `src/tactics/combat.ts`: posiciones, zonas de impacto (`zoneFrom`, `struck`) y rendimiento por posición (`slotWeight`).
 - `src/tactics/guide.ts`: marcas sobre casillas y lecturas sobre tropas.
-- `tests/campaign.test.ts`: cada misión se gana con un bot sencillo (despliega lo que llega, construye, defiende) y se pierde si no se hace nada.
+- `tests/campaign.test.ts`: cada misión se gana con el jugador sencillo de `tests/player.ts` (despliega lo que llega, construye, defiende; el escuadrón más fuerte al campamento), se pierde si no se hace nada, y la misión 3 se pierde solo con lanceros.
 
 ## Pendiente
 

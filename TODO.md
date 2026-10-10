@@ -2,7 +2,9 @@
 
 ## Siguiente
 
-- [ ] Tomar los campamentos del Clan del Humo: sostener uno junto a una torre lo toma, arde y pasa a ser tierra propia; ese lado deja de mandar oleadas. Debe costar (campamento defendido u oleadas desde otros lados).
+- [ ] Obras desde el botín (empalizada, estacas, atalaya), modo sin fin con dificultad ligada a la tierra: ver `docs/territorio.md`.
+- [ ] Tomar los campamentos del Clan del Humo en todas las misiones (hoy solo en la 6, con guarnición): sostener uno junto a una torre lo toma, arde y pasa a ser tierra propia; ese lado deja de mandar oleadas.
+- [ ] Probar con personas el nuevo balance (bajas, golpe de las incursiones 9, cosecha más lenta, misión 6 con guarnición): está ajustado con `scripts/sim.ts`, no jugando.
 - [ ] Vista previa al arrastrar una tropa sobre un escuadrón (mismas insignias del choque, sin veredicto).
 - [ ] Marca de veterano para el escuadrón que destruye una incursión sin quebrarse.
 

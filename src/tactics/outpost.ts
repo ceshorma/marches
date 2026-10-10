@@ -1,9 +1,11 @@
 import { troopNames } from "./combat";
 import type { TroopType } from "./combat";
-import { createBattle, adjacent, blocked, route } from "./model";
+import { createBattle, adjacent, blocked, route, DX } from "./model";
 import type { Battle, Raid, Squad, WaveSpec } from "./model";
 const cell = (q: number, r: number) => r * 18 + q;
 export const EAST = cell(16, 8);
+// What the tray holds: troops, and towers waiting to be placed.
+export type Item = TroopType | "tower";
 export function createOutpost(): Battle {
   const b = createBattle();
   b.squads = [];
@@ -122,6 +124,57 @@ export function addReserveTroop(
   if (id !== o.fort && !adjacent(o.fort).includes(id)) o.towerDeploys++;
   return null;
 }
+// ── Towers from the tray ──────────────────────────────────────────────
+// A tower waits in the tray until it is placed on the map; a squad standing
+// on it then builds it. It goes near your land (at most TOWER_REACH from a
+// held cell, so it pushes the frontier) and apart from the fort and other
+// towers (at least TOWER_GAP), on open ground the enemy is not standing on.
+export const TOWER_REACH = 3.2,
+  TOWER_GAP = 2.5;
+const cellsApart = (b: Battle, a: number, c: number) =>
+  Math.hypot(b.cells[a].x - b.cells[c].x, b.cells[a].y - b.cells[c].y) / DX;
+export function towerError(b: Battle, id: number): string | null {
+  const o = b.outpost,
+    c = b.cells[id];
+  if (!o || !c) return "Celda inaccesible";
+  if (!(o.kits ?? 0)) return "No hay torres para colocar";
+  if (c.terrain === "rock" || c.place) return "Aquí no se puede levantar";
+  if (
+    [o.fort, ...o.sites.map((x) => x.cell)].some(
+      (x) => cellsApart(b, x, id) < TOWER_GAP,
+    )
+  )
+    return "Demasiado cerca de otra torre";
+  if (o.camp && !o.camp.taken && cellsApart(b, o.camp.cell, id) < 2)
+    return "Demasiado cerca del campamento";
+  const land = o.land ?? [];
+  if (!land.some((v, x) => v >= HOLD && cellsApart(b, x, id) <= TOWER_REACH))
+    return "Lejos de tu tierra";
+  if (allTroopsAt(b, id)) return "Celda ocupada";
+  return null;
+}
+const allTroopsAt = (b: Battle, id: number) =>
+  live(b).some((r) => r.troop.cell === id);
+// Places a tower from the tray: it becomes a site to be built.
+export function placeTower(b: Battle, id: number): string | null {
+  const error = towerError(b, id);
+  if (error) return error;
+  const o = b.outpost!;
+  o.kits! -= 1;
+  o.sites.push({ cell: id, progress: 0, builtAt: null, active: false });
+  return null;
+}
+// The rival camp can be taken while a tower of yours stands near it.
+export const CAMP_SUPPORT = 5.2;
+export const campSupported = (b: Battle) => {
+  const o = b.outpost!;
+  return (
+    !!o.camp &&
+    o.sites.some(
+      (s) => s.active && cellsApart(b, s.cell, o.camp!.cell) <= CAMP_SUPPORT,
+    )
+  );
+};
 // Convenience used by simulation tests; the live UI chooses the target cell.
 export function createScout(b: Battle): string | null {
   const id = adjacent(b.outpost!.fort).find((id) => !deploymentError(b, id));
@@ -129,20 +182,28 @@ export function createScout(b: Battle): string | null {
     ? "Despeja el cuartel"
     : addReserveTroop(b, id, "shield");
 }
-function launch(
+export function launch(
   b: Battle,
   spec: Omit<WaveSpec, "at" | "target"> & { target: number },
   wave?: number,
+  guard = false,
 ): boolean {
   const o = b.outpost!;
-  if (blocked(b, spec.from, "incursion")) return false;
+  // An entry point held by your troops does not stop a wave: it forms on a
+  // free cell next to it, right in front of them.
+  const from = !blocked(b, spec.from, "incursion")
+    ? spec.from
+    : adjacent(spec.from).find(
+        (id) => !blocked(b, id, "incursion") && b.cells[id].terrain !== "rock",
+      );
+  if (from === undefined) return false;
   const troop: Squad = {
     id: `incursion-${o.waves}`,
     name: "Incursión",
-    cell: spec.from,
+    cell: from,
     facing: Math.atan2(
-      b.cells[spec.target].y - b.cells[spec.from].y,
-      b.cells[spec.target].x - b.cells[spec.from].x,
+      b.cells[spec.target].y - b.cells[from].y,
+      b.cells[spec.target].x - b.cells[from].x,
     ),
     targetFacing: 0,
     members: [...spec.units],
@@ -156,7 +217,7 @@ function launch(
   const raid: Raid = {
     troop,
     target: spec.target,
-    home: spec.from,
+    home: from,
     phase: "approach",
     pressure: 0,
     supplies: 100,
@@ -165,8 +226,13 @@ function launch(
     resolvedAt: 0,
     strength: spec.strength,
     wave,
+    guard: guard || undefined,
   };
   b.raids = [...(b.raids ?? []), raid];
+  if (guard) {
+    o.waves++;
+    return true;
+  }
   troop.path = route(b, troop, spec.target);
   if (!troop.path.length)
     for (const n of adjacent(spec.target)) {
@@ -183,6 +249,14 @@ function launch(
 function aim(b: Battle, target: WaveSpec["target"], index: number) {
   const o = b.outpost!;
   if (typeof target === "number") return target;
+  // Whoever stands on the clan's camp draws every wave onto them.
+  const camp = o.camp;
+  if (
+    camp &&
+    !camp.taken &&
+    b.squads.some((u) => u.cell === camp.cell || near(b, u.cell, camp.cell, 80))
+  )
+    return camp.cell;
   const towers = o.sites.filter((s) => s.active);
   return target === "fort" || !towers.length
     ? o.fort
@@ -237,7 +311,11 @@ export const spoilsOf = (units: TroopType[]) =>
 export function enemyCamps(b: Battle): number[] {
   const o = b.outpost;
   if (!o) return [];
-  return o.script ? [...new Set(o.script.waves.map((w) => w.from))] : [EAST];
+  const camps = o.script
+    ? [...new Set(o.script.waves.map((w) => w.from))]
+    : [EAST];
+  // A taken camp is gone: it burns and becomes your land.
+  return o.camp?.taken ? camps.filter((id) => id !== o.camp!.cell) : camps;
 }
 // Seconds an enemy wave spends gathering in view before it sets out.
 export const GATHER = 15;
@@ -356,6 +434,8 @@ export function updateOutpost(b: Battle, dt: number) {
   for (const r of b.raids) {
     if (r.handled || r.outcome === "active") continue;
     r.handled = true;
+    // A garrison is no wave: it does not count towards the mission's waves.
+    if (r.guard) continue;
     o.resolved++;
     if (r.outcome === "protected") {
       o.repelled++;
@@ -426,21 +506,29 @@ function updateTracks(b: Battle, dt: number) {
     );
   }
 }
+// Seconds a squad must hold the rival camp to take it.
+export const CAMP_HOLD = 35;
 // Holding the rival camp, uncontested and next to a secured tower, ends the raids.
 function updateCamp(b: Battle, camp: NonNullable<Outpost["camp"]>, dt: number) {
   const o = b.outpost!;
-  const supported = o.sites.some((s) => s.cell === camp.needs && s.active);
+  const supported = campSupported(b);
+  // A squad standing on the camp holds it, even while it fights.
   const holder = b.squads.find(
-    (u) => u.cell === camp.cell && !u.path.length && !u.routing && !u.engaged,
+    (u) => u.cell === camp.cell && !u.path.length && !u.routing,
   );
+  if (!holder || !supported) {
+    // Ground taken is not lost at once: retake it before it fades.
+    camp.progress = Math.max(0, camp.progress - dt / 30);
+    return;
+  }
+  // Contested: the clan fights for it and the taking slows to a third.
   const threat = live(b).some(
     (r) => r.phase !== "retreat" && near(b, r.troop.cell, camp.cell),
   );
-  if (!holder || !supported || threat) {
-    camp.progress = Math.max(0, camp.progress - dt);
-    return;
-  }
-  camp.progress = Math.min(1, camp.progress + dt / 10);
+  camp.progress = Math.min(
+    1,
+    camp.progress + dt / (CAMP_HOLD * (threat ? 3 : 1)),
+  );
   if (camp.progress >= 1) {
     camp.taken = true;
     o.nextRaid = Infinity;
@@ -465,8 +553,8 @@ export const hasHouse = (id: number) =>
   (id * 7 + Math.floor(id / 18)) % 3 === 0;
 // Cell-seconds of held land per troop that arrives at the fort, and the
 // fastest arrivals can come however much land is held.
-export const HARVEST = 320;
-const FASTEST = 12;
+export const HARVEST = 450;
+const FASTEST = 18;
 const yieldRate = (b: Battle) => Math.min(held(b) / HARVEST, 1 / FASTEST);
 const GROW = 0.35,
   FADE = 0.06,
@@ -529,7 +617,7 @@ export const held = (b: Battle) =>
 export function eaten(b: Battle) {
   const cells = new Set<number>();
   for (const r of live(b)) {
-    if (r.phase === "retreat" || r.troop.routing) continue;
+    if (r.phase === "retreat" || r.troop.routing || r.guard) continue;
     cells.add(r.troop.cell);
     for (const n of adjacent(r.troop.cell)) cells.add(n);
   }
@@ -543,7 +631,7 @@ function updateLand(b: Battle, dt: number) {
     towers = new Set(o.sites.filter((s) => s.active).map((s) => s.cell));
   const eating = new Map<number, number>();
   for (const r of live(b)) {
-    if (r.phase === "retreat" || r.troop.routing) continue;
+    if (r.phase === "retreat" || r.troop.routing || r.guard) continue;
     eating.set(r.troop.cell, (eating.get(r.troop.cell) ?? 0) + EAT);
     for (const n of adjacent(r.troop.cell))
       eating.set(n, (eating.get(n) ?? 0) + EAT_NEAR);

@@ -1,4 +1,4 @@
-import { createOutpost, held, settleLand } from "./outpost";
+import { createOutpost, held, launch, settleLand } from "./outpost";
 import { adjacent } from "./model";
 import type { Battle, WaveSpec } from "./model";
 import type { TroopType } from "./combat";
@@ -9,7 +9,8 @@ const cell = (q: number, r: number) => r * 18 + q;
 const WEST = cell(7, 8),
   NORTH = cell(9, 5),
   SOUTH = cell(11, 9),
-  CAMP = cell(16, 8);
+  CAMP = cell(16, 8),
+  GARRISON = cell(15, 8);
 // Enemy entry points on the map edge.
 const E = cell(16, 8),
   NE = cell(15, 0),
@@ -23,7 +24,7 @@ const wave = (
   at: number,
   from: number,
   units: TroopType[],
-  strength = 40,
+  strength = 70,
   target: WaveSpec["target"] = "tower",
 ): WaveSpec => ({ at, from, units, strength, target });
 export type MissionConfig = {
@@ -72,7 +73,8 @@ export const missions: MissionConfig[] = [
     reserve: { ...none, shield: 2 },
     trigger: "tower",
     arrivals: [{ at: 10, type: A }],
-    waves: [wave(25, E, [L, L], 35), wave(65, E, [L, L, A], 40)],
+    // Riders first: your lancers beat them, and the first clash shows it.
+    waves: [wave(25, E, [C, C], 50), wave(65, E, [C, C, A], 60)],
     goal: 18,
     check: holdLand,
   },
@@ -89,6 +91,7 @@ export const missions: MissionConfig[] = [
     trigger: "start",
     arrivals: [
       { at: 20, type: C },
+      { at: 35, type: L },
       { at: 55, type: L },
       { at: 70, type: A },
     ],
@@ -120,16 +123,16 @@ export const missions: MissionConfig[] = [
       { at: 80, type: A },
     ],
     waves: [
-      wave(20, E, [A, A, A, A], 45),
-      wave(55, E, [C, C, C], 45),
-      wave(95, E, [L, L, L, L], 45),
+      wave(20, E, [A, A, A, A], 75),
+      wave(55, E, [C, C, C], 75),
+      wave(95, E, [L, L, L, L], 75),
     ],
     goal: 18,
     check: holdLand,
   },
   {
     name: "La loma del norte",
-    objective: "DOMINA 26 CASILLAS",
+    objective: "DOMINA 28 CASILLAS",
     hint: "Desde el noreste bajan hacia la loma. Una torre en lo alto los recibe cuesta arriba.",
     success: "Dos torres en pie",
     failure: "No te quedó tierra suficiente",
@@ -149,12 +152,12 @@ export const missions: MissionConfig[] = [
       wave(115, NE, [C, C, C]),
       wave(150, E, [L, L, A, A]),
     ],
-    goal: 26,
+    goal: 28,
     check: holdLand,
   },
   {
     name: "La pinza",
-    objective: "DOMINA 30 CASILLAS",
+    objective: "DOMINA 36 CASILLAS",
     hint: "Atacan de dos en dos y desde lados opuestos. Reparte la defensa.",
     success: "La pinza no se cerró",
     failure: "No te quedó tierra suficiente",
@@ -178,7 +181,7 @@ export const missions: MissionConfig[] = [
       wave(125, S, [C, C, L]),
     ],
     map: { plain: [cell(7, 9), cell(7, 10), cell(7, 11)] },
-    goal: 30,
+    goal: 36,
     check: holdLand,
   },
   {
@@ -192,8 +195,8 @@ export const missions: MissionConfig[] = [
     squads: [{ cell: cell(3, 7), members: [L, L, A] }],
     reserve: { shield: 2, bow: 2, horse: 2 },
     trigger: "start",
-    arrivals: Array.from({ length: 30 }, (_, i) => ({
-      at: 25 + i * 25,
+    arrivals: Array.from({ length: 24 }, (_, i) => ({
+      at: 25 + i * 35,
       type: ([C, L, A] as const)[i % 3],
     })),
     // The camp keeps sending waves until it falls.
@@ -208,7 +211,7 @@ export const missions: MissionConfig[] = [
             [A, A, C],
           ] as TroopType[][]
         )[i % 3],
-        50,
+        80,
       ),
     ),
     camp: true,
@@ -228,14 +231,18 @@ export function createMission(index: number): Battle {
   for (const id of m.map?.plain ?? []) b.cells[id].terrain = "plain";
   for (const id of m.map?.forest ?? []) b.cells[id].terrain = "forest";
   for (const id of m.map?.rock ?? []) b.cells[id].terrain = "rock";
-  o.sites = o.sites.filter((s) => m.sites.includes(s.cell));
-  for (const s of o.sites)
-    if (m.built?.includes(s.cell)) {
-      s.active = true;
-      s.progress = 1;
-      // Pre-built towers already project their full influence.
-      s.builtAt = -10;
-    }
+  // Towers already standing; the rest wait in the tray, with the mission's
+  // sites as suggestions of where to put them.
+  o.sites = o.sites.filter((s) => m.built?.includes(s.cell));
+  for (const s of o.sites) {
+    s.active = true;
+    s.progress = 1;
+    // Pre-built towers already project their full influence.
+    s.builtAt = -10;
+  }
+  o.suggested = m.sites.filter((id) => !m.built?.includes(id));
+  o.kits = o.suggested.length;
+  for (const id of o.suggested) b.cells[id].terrain = "plain";
   o.reserve = { ...m.reserve };
   // Troops earned by land cycle through every type.
   o.supply = ["shield", "bow", "horse"];
@@ -275,6 +282,21 @@ export function createMission(index: number): Battle {
     o.camp = { cell: CAMP, needs: SOUTH, progress: 0, taken: false };
   }
   settleLand(b);
+  // A garrison holds the road in front of the camp: beat it to take the camp.
+  if (m.camp) {
+    b.cells[GARRISON].terrain = "plain";
+    launch(
+      b,
+      {
+        from: GARRISON,
+        units: [L, L, A, A, C, C],
+        strength: 120,
+        target: GARRISON,
+      },
+      undefined,
+      true,
+    );
+  }
   b.lesson = { index, status: "active", progress: 0, target: m.sites[0] };
   return b;
 }
