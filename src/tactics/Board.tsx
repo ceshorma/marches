@@ -1,6 +1,7 @@
 import { matchup, slotsOf, zoneSlots } from "./combat";
 import type { TroopType } from "./combat";
 import { iconPaths } from "./icons";
+import * as art from "./art";
 import {
   deploymentError,
   BURN,
@@ -50,6 +51,8 @@ function text(
       fontSize: size,
       fill: color,
       letterSpacing: 2,
+      // A paper halo keeps names readable over fields and forest.
+      stroke: { color: 0xf3efe2, width: 3, join: "round" },
     },
   });
   t.anchor.set(0.5);
@@ -262,28 +265,9 @@ export default function Board() {
             }
           }
         }
-        if (c.terrain === "forest") {
-          for (let j = 0; j < 3; j++) {
-            const x = c.x + (j - 1) * 14,
-              y = c.y + (j % 2 ? 10 : -6);
-            terrain
-              .circle(x + 2, y + 3, 13)
-              .fill({ color: 0x384a39, alpha: 0.1 });
-            terrain
-              .poly(
-                Array.from({ length: 9 }, (_, i) => {
-                  const a = (i * Math.PI * 2) / 9,
-                    r = 12 + (i % 2) * 2;
-                  return [x + Math.cos(a) * r, y + Math.sin(a) * r];
-                }).flat(),
-              )
-              .fill(j % 2 ? 0x8a9b79 : 0x778d6e);
-            terrain
-              .circle(x - 2, y - 3, 7)
-              .fill({ color: 0xa3b18d, alpha: 0.3 });
-            terrain.circle(x, y, 2).fill(0x5b6b51);
-          }
-        }
+        if (c.terrain === "forest")
+          // Broadleaf in the lowlands, conifers on the hills.
+          art.forest(terrain, c.x, c.y, c.id, c.height > 0);
         if (c.terrain === "rock") {
           terrain
             .poly(hex(c.x, c.y, R - 2))
@@ -300,36 +284,9 @@ export default function Board() {
                   cap: "round",
                 });
         }
-        if (c.terrain === "rock")
-          for (let j = 0; j < 3; j++) {
-            const x = c.x + (j - 1) * 15,
-              y = c.y + (j % 2) * 10;
-            terrain
-              .poly([
-                x - 10,
-                y + 5,
-                x - 7,
-                y - 8,
-                x + 2,
-                y - 12,
-                x + 11,
-                y - 2,
-                x + 8,
-                y + 8,
-              ])
-              .fill(0xb4b4a7)
-              .stroke({ color: 0x939789, width: 1 });
-            terrain
-              .poly([x - 7, y - 8, x + 2, y - 12, x + 11, y - 2, x, y])
-              .fill(0xcccdc0);
-          }
-        if (c.terrain === "plain" && !c.place && c.id % 9 === 0) {
-          for (let j = 0; j < 3; j++)
-            terrain
-              .moveTo(c.x + j * 4 - 4, c.y + 5)
-              .lineTo(c.x + j * 5 - 5, c.y - 2 - (j % 2) * 4)
-              .stroke({ color: 0xa9ad87, width: 1 });
-        }
+        if (c.terrain === "rock") art.rocks(terrain, c.x, c.y, c.id);
+        if (c.terrain === "plain" && !c.place && art.rnd(c.id, 11) < 0.14)
+          art.grass(terrain, c.x - 8 + art.rnd(c.id) * 16, c.y + 6, c.id);
       }
       const road = new Graphics();
       base.addChild(road);
@@ -370,43 +327,9 @@ export default function Board() {
       )) {
         const g = new Graphics();
         base.addChild(g);
-        if (c.place === "fort") {
-          g.roundRect(c.x - 23, c.y - 22, 46, 44, 3)
-            .fill(0xc8bea0)
-            .stroke({ color: 0x776f58, width: 4 });
-          for (const dx of [-22, 22])
-            for (const dy of [-21, 21])
-              g.rect(c.x + dx - 4, c.y + dy - 4, 8, 8).fill(0x8b8064);
-          g.poly([c.x - 15, c.y + 8, c.x - 7, c.y - 9, c.x + 1, c.y + 8]).fill(
-            BLUE,
-          );
-          g.poly([
-            c.x + 3,
-            c.y + 10,
-            c.x + 10,
-            c.y - 6,
-            c.x + 17,
-            c.y + 10,
-          ]).fill(0x668fa2);
-        } else if (c.place === "camp") {
-          for (const dx of [-12, 12])
-            g.poly([
-              c.x + dx - 11,
-              c.y + 12,
-              c.x + dx,
-              c.y - 10,
-              c.x + dx + 11,
-              c.y + 12,
-            ])
-              .fill(0xb98a78)
-              .stroke({ color: 0x8a5a4c, width: 2 });
-          g.moveTo(c.x, c.y - 8)
-            .lineTo(c.x, c.y - 34)
-            .stroke({ color: INK, width: 1.5 });
-          g.poly([c.x, c.y - 34, c.x + 15, c.y - 29, c.x, c.y - 23]).fill(
-            0xc8615a,
-          );
-        } else if (c.place === "village") {
+        if (c.place === "fort") art.fort(g, c.x, c.y);
+        else if (c.place === "camp") art.camp(g, c.x, c.y);
+        else if (c.place === "village") {
           for (const dx of [-13, 12]) {
             g.rect(c.x + dx - 9, c.y - 12, 18, 26).fill(0xb87958);
             g.moveTo(c.x + dx, c.y - 12)
@@ -606,6 +529,14 @@ export default function Board() {
         });
       // Two fingers pinch to zoom around their midpoint.
       const pointers = new Map<number, { x: number; y: number }>();
+      // Capture can fail for pointers the browser no longer tracks.
+      const capture = (id: number) => {
+        try {
+          canvas.setPointerCapture(id);
+        } catch {
+          /* The gesture still works without capture. */
+        }
+      };
       let lift = 0,
         pinch: {
           distance: number;
@@ -637,7 +568,7 @@ export default function Board() {
           };
           down = null;
           drag = null;
-          canvas.setPointerCapture(e.pointerId);
+          capture(e.pointerId);
           return;
         }
         if (e.button !== 0 || pinch) return;
@@ -664,7 +595,7 @@ export default function Board() {
           unit: u?.id ?? null,
         };
         moved = false;
-        canvas.setPointerCapture(e.pointerId);
+        capture(e.pointerId);
       };
       const pointerMove = (e: PointerEvent) => {
         pointer = local(e);
@@ -1077,57 +1008,24 @@ export default function Board() {
                   )
                   .stroke({ color: BLUE, width: 2.5, alpha: 0.75 });
               });
-            // Lived-in ground: furrowed fields, then a house on some cells.
-            if (people > 0.25 && !built.has(c.id)) {
-              const fields = c.terrain === "plain";
-              if (fields)
-                for (let j = -1; j <= 1; j++)
-                  territory
-                    .moveTo(c.x - 20 + j * 4, c.y + 10 + j * 7)
-                    .lineTo(c.x - 4 + j * 4, c.y + 2 + j * 7)
-                    .stroke({
-                      color: 0xa88a52,
-                      width: 1.6,
-                      alpha: Math.min(1, (people - 0.25) * 1.6) * 0.7,
-                    });
-              if (people > 0.7 && hasHouse(c.id)) {
-                const hx = c.x + 12,
-                  hy = c.y - 6;
-                territory
-                  .rect(hx - 6, hy - 3, 12, 9)
-                  .fill(0xeadfc6)
-                  .stroke({ color: 0x8a6e4b, width: 1 });
-                territory
-                  .poly([hx - 8, hy - 2, hx, hy - 9, hx + 8, hy - 2])
-                  .fill(0xa65d3f);
-              }
-            }
-            // Burnt ground stays dark until it is lived in again.
+            // Lived-in ground: fields first, then a house on some cells.
+            if (people > 0.25 && !built.has(c.id))
+              art.homestead(
+                territory,
+                c.x,
+                c.y,
+                c.id,
+                people,
+                c.terrain === "plain",
+                hasHouse(c.id),
+              );
+            // Burnt ground stays charred until it is lived in again.
             if (fire < 45 && people < 0.3 && !built.has(c.id))
-              territory
-                .ellipse(c.x - 6, c.y + 4, 15, 8)
-                .fill({ color: 0x4a4038, alpha: 0.22 * (1 - fire / 45) });
+              art.scorched(territory, c.x, c.y, 1 - fire / 45, c.id);
             if (fire < BURN) {
               // Flames, then smoke drifting up: the enemy is burning your people.
-              const k = 1 - fire / BURN;
-              for (let j = 0; j < 3; j++) {
-                const fx = c.x - 10 + j * 10,
-                  flick = Math.sin(b.time * 13 + j * 2) * 2.5,
-                  h = (10 + j * 3) * k + flick;
-                territory
-                  .poly([fx - 4, c.y + 6, fx, c.y + 6 - h, fx + 4, c.y + 6])
-                  .fill({ color: j % 2 ? 0xf2b33d : 0xe0682f, alpha: 0.9 * k });
-              }
-              for (let j = 0; j < 3; j++) {
-                const t = (fire * 0.6 + j / 3) % 1;
-                territory
-                  .circle(
-                    c.x + Math.sin(j * 2 + fire) * 5,
-                    c.y - 6 - t * 34,
-                    4 + t * 6,
-                  )
-                  .fill({ color: 0x6b6a63, alpha: 0.35 * (1 - t) });
-              }
+              art.fire(territory, c.x, c.y, 1 - fire / BURN, b.time);
+              art.smoke(territory, c.x, c.y, fire);
             } else if (eating.has(c.id) && v > 0.02) {
               territory
                 .poly(hex(c.x, c.y, R - 3))
@@ -1141,41 +1039,14 @@ export default function Board() {
           }
           for (const site of b.outpost.sites) {
             const c = b.cells[site.cell];
-            if (site.active) {
-              overlay
-                .rect(c.x - 11, c.y - 11, 22, 22)
-                .fill(0xc5c3b0)
-                .stroke({ color: 0x788b82, width: 2 });
-              overlay.rect(c.x - 5, c.y - 5, 10, 10).fill(0xe8e5d5);
-              overlay
-                .moveTo(c.x - 10, c.y - 10)
-                .lineTo(c.x - 10, c.y - 31)
-                .stroke({ color: INK, width: 1.5 });
-              overlay
-                .poly([
-                  c.x - 10,
-                  c.y - 31,
-                  c.x + 5,
-                  c.y - 27,
-                  c.x - 10,
-                  c.y - 21,
-                ])
-                .fill(BLUE);
-            } else {
+            if (site.active) art.tower(overlay, c.x, c.y);
+            else {
               overlay
                 .poly(hex(c.x, c.y, R - 4))
                 .fill({ color: BLUE, alpha: 0.05 })
-                .stroke({ color: BLUE, width: 1.5, alpha: 0.6 });
-              overlay
-                .rect(c.x - 11, c.y - 11, 22, 22)
-                .stroke({ color: 0x6f7d6c, width: 1.8, alpha: 0.9 });
-              overlay
-                .moveTo(c.x - 5, c.y)
-                .lineTo(c.x + 5, c.y)
-                .moveTo(c.x, c.y - 5)
-                .lineTo(c.x, c.y + 5)
-                .stroke({ color: BLUE, width: 1.3, alpha: 0.7 });
+                .stroke({ color: BLUE, width: 1.5, alpha: 0.5 });
               if (site.progress > 0) {
+                art.scaffold(overlay, c.x, c.y, site.progress);
                 overlay
                   .moveTo(c.x, c.y - (R - 8))
                   .arc(
@@ -1186,11 +1057,13 @@ export default function Board() {
                     -Math.PI / 2 + site.progress * Math.PI * 2,
                   )
                   .stroke({ color: BLUE, width: 3 });
-                overlay
-                  .rect(c.x - 8, c.y - 8, 16, 16)
-                  .fill({ color: 0xc5c3b0, alpha: site.progress });
-              }
+              } else art.emplacement(overlay, c.x, c.y);
             }
+          }
+          // The rival camp's fire keeps smoking.
+          if (b.outpost.camp && !b.outpost.camp.taken) {
+            const c = b.cells[b.outpost.camp.cell];
+            art.smoke(overlay, c.x + 2, c.y + 2, b.time, 0.6);
           }
         }
         for (const raid of activeRaids(b)) {

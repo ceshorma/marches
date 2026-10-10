@@ -101,6 +101,10 @@ Dos escuadrones con seis integrantes cada uno; composición fija para validar mo
 
 Tres alturas (0, +15, +30), un fuerte, una aldea y una torre. Los edificios son referencias del escenario; no tienen acciones todavía. La partida comienza con «Protege la aldea». Una patrulla avanza, toma suministros si llega sin oposición y se retira cuando pierde cohesión durante un enfrentamiento. Puedes interceptarla o interrumpir el saqueo. La bandera azul permanece: una incursión no cambia la propiedad. El resultado distingue aldea protegida y saqueada; reiniciar permite repetir la prueba. El contacto inicia ataques cada 1,35 segundos y desgaste de cohesión de ambos bandos. Las flechas y destellos corresponden a esos ataques. Un segundo escuadrón acelera el repliegue rival; retirar a los defensores permite que el enemigo continúe. Los aliados quebrados buscan una celda segura y se recuperan antes de aceptar nuevas órdenes. Este enfrentamiento simplificado aún no incluye bajas permanentes, ventajas de flanqueo, reclutamiento, captura ni influencia territorial.
 
+## Arte
+
+Todo el arte del mapa se dibuja con vectores desde `src/tactics/art.ts`: un mapa de campaña visto desde arriba, con colores planos de una sola paleta, un trazo de tinta suave y una sombra ligera bajo lo que se levanta (fuerte, torres, obra, emplazamientos, campamento rival, casas de tres tipos, campos, vallas, pozos, bosques de frondosas y coníferas, rocas, hierba, fuego, humo y tierra calcinada). Los iconos de tropa (escudo con lanza, arco, cabeza de caballo) están en `src/tactics/icons.tsx` y se usan igual en el mapa y en la interfaz. Abriendo el juego con `?sheet` se ve una hoja con todos los elementos en grande, para revisarlos.
+
 ## Organización
 
 - `src/tactics/model.ts`: escenario determinista, rutas, ocupación y simulación a pasos fijos.

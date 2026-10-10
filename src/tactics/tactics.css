@@ -1108,3 +1108,6 @@ button:focus-visible {
     gap: 6px;
   }
 }
+.troop-icon.on-token {
+  color: #f4f0e3;
+}
