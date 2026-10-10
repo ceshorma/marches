@@ -591,12 +591,6 @@ button:focus-visible {
   }
 }
 
-/* Unit icons and formations. */
-.troop-icon {
-  flex: none;
-  color: #326f97;
-  vertical-align: -2px;
-}
 .troop-icon.horse {
   color: #8a6a3e;
 }
@@ -610,58 +604,7 @@ button:focus-visible {
     transform: scale(1);
   }
 }
-.formation {
-  display: grid;
-  grid-template-columns: repeat(2, 34px);
-  grid-auto-rows: 34px;
-  gap: 4px;
-  align-content: start;
-}
-.formation-head {
-  font-size: 9px;
-  color: #7d897d;
-  text-align: center;
-  height: 12px;
-  line-height: 12px;
-  align-self: end;
-}
-.formation-head + .formation-head + .slot {
-  margin-top: 0;
-}
-.tactical-game .formation .slot {
-  min-width: 0;
-  min-height: 0;
-  width: 34px;
-  height: 34px;
-  padding: 0;
-  border-radius: 7px;
-}
-.tactical-game .formation .slot.filled {
-  background: #326f97;
-  color: #f4f0e3;
-}
-.tactical-game .formation .slot.filled .troop-icon {
-  color: #f4f0e3;
-}
-.tactical-game .formation .slot.empty {
-  border: 1.5px dashed #326f9755;
-  background: #326f970a;
-}
-.tactical-game .formation .slot .ghost {
-  opacity: 0;
-  transition: opacity 120ms;
-}
-.tactical-game .formation .slot.empty:hover .ghost,
-.tactical-game .formation .slot.empty:focus-visible .ghost {
-  opacity: 0.45;
-}
-.tactical-game .formation .slot.chosen {
-  outline: 2.5px solid #e0a63c;
-  outline-offset: 1px;
-}
-.tactical-game .formation .slot:disabled {
-  opacity: 0.6;
-}
+
 .recruit-types {
   display: flex;
   flex-direction: column;
@@ -686,11 +629,7 @@ button:focus-visible {
   font-weight: 600;
   margin-left: auto;
 }
-.orders .formation {
-  padding: 0 14px;
-  border-left: 1px solid #dadccd;
-  border-right: 1px solid #dadccd;
-}
+
 /* Timeline: next enemy waves (red) and arrivals (blue) slide towards now. */
 .timeline {
   display: flex;
@@ -868,26 +807,7 @@ button:focus-visible {
     min-height: 48px !important;
     font-size: 13px;
   }
-  .formation {
-    grid-template-columns: repeat(2, 48px);
-    grid-auto-rows: 48px;
-    gap: 6px;
-  }
-  .tactical-game .formation .slot {
-    width: 48px;
-    height: 48px;
-  }
-  .formation-head {
-    font-size: 11px;
-  }
-  .orders .formation {
-    grid-template-columns: repeat(2, 44px);
-    grid-auto-rows: 44px;
-  }
-  .tactical-game .orders .formation .slot {
-    width: 44px;
-    height: 44px;
-  }
+
   .orders button:last-child {
     min-width: 44px;
     min-height: 44px;
@@ -901,9 +821,7 @@ button:focus-visible {
     transform: translateY(0);
   }
 }
-.tactical-game .formation-toggle {
-  display: none;
-}
+
 @media (max-width: 700px) {
   .orders {
     flex-wrap: nowrap;
@@ -915,32 +833,6 @@ button:focus-visible {
   .orders .unit-title {
     min-width: 0;
     flex: 1;
-  }
-  .tactical-game .formation-toggle {
-    display: flex;
-    min-height: 44px;
-    padding: 0 12px;
-    border: 1px solid #326f9755;
-    border-radius: 22px;
-    font-size: 13px;
-    color: #326f97;
-  }
-  .tactical-game .orders.expanded .formation-toggle {
-    background: #326f971a;
-  }
-  .orders .formation {
-    display: none;
-  }
-  .orders.expanded {
-    flex-wrap: wrap;
-  }
-  .orders.expanded .formation {
-    display: grid;
-    order: 3;
-    width: 100%;
-    justify-content: center;
-    border: 0;
-    padding: 6px 0 4px;
   }
 }
 

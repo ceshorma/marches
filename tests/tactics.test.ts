@@ -150,13 +150,16 @@ test("contact exchanges attacks and cohesion before retreat", () => {
   assert.ok(b.strikes!.some((h) => h.enemy));
   assert.ok(b.strikes!.some((h) => !h.enemy));
 });
-test("support breaks enemy cohesion sooner", () => {
+test("support breaks the enemy sooner, and broken raiders are destroyed", () => {
   const one = contact(),
     two = contact(true);
   run(one, 12);
   run(two, 12);
   assert.equal(one.raid!.phase, "fight");
-  assert.equal(two.raid!.phase, "retreat");
+  assert.equal(two.raid!.phase, "gone");
+  assert.equal(two.raid!.outcome, "protected");
+  assert.ok(two.raid!.fell! > 0);
+  assert.equal(two.fallen!.length, 1);
 });
 test("withdrawing defenders lets enemy resume its objective", () => {
   const b = contact();

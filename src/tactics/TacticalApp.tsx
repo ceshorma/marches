@@ -1,10 +1,9 @@
 import { missions, waveProgress } from "./campaign";
-import { FormationGrid } from "./Formation";
 import { TroopIcon } from "./icons";
 import { activeRaids } from "./model";
 import type { Battle } from "./model";
 import { held, upcoming } from "./outpost";
-import { composition, slotsOf, troopTypes, troopNames } from "./combat";
+import { composition, troopTypes, troopNames } from "./combat";
 import type { TroopType } from "./combat";
 import { useEffect, useState } from "react";
 import {
@@ -26,9 +25,7 @@ export default function TacticalApp() {
     [generation, setGeneration] = useState(0),
     [menu, setMenu] = useState(false),
     [wasPaused, setWasPaused] = useState(false),
-    [recruitType, setRecruitType] = useState<TroopType>("shield"),
-    [picked, setPicked] = useState<number | null>(null),
-    [showFormation, setShowFormation] = useState(false);
+    [recruitType, setRecruitType] = useState<TroopType>("shield");
   const outpost = s.battle.outpost;
   const lesson = s.battle.lesson,
     mission = lesson ? missions[lesson.index] : null;
@@ -218,10 +215,7 @@ export default function TacticalApp() {
         ))}
       </div>
       {unit ? (
-        <section
-          className={`orders ${showFormation ? "expanded" : ""}`}
-          aria-label="Órdenes de escuadrón"
-        >
+        <section className="orders" aria-label="Órdenes de escuadrón">
           <div className="unit-title">
             <strong>{unit.name}</strong>
             {(unit.engaged || unit.routing) && (
@@ -232,28 +226,6 @@ export default function TacticalApp() {
             )}
             <span>{composition(unit)}</span>
           </div>
-          {/* Phones show the formation only on demand, to keep the map clear. */}
-          <button
-            className="formation-toggle"
-            aria-expanded={showFormation}
-            onClick={() => setShowFormation(!showFormation)}
-          >
-            Formación
-          </button>
-          <FormationGrid
-            squad={unit}
-            picked={picked}
-            disabled={!!unit.engaged || unit.routing}
-            onSlot={(slot) => {
-              // Tap a member, then another slot, to reorder the formation.
-              if (picked === null) {
-                if (slotsOf(unit).includes(slot)) setPicked(slot);
-              } else {
-                if (slot !== picked) s.arrange(unit.id, picked, slot);
-                setPicked(null);
-              }
-            }}
-          />
           <button aria-label="Cerrar selección" onClick={() => s.select(null)}>
             <X size={17} />
           </button>

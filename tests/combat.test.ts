@@ -113,10 +113,15 @@ test("the struck zone decides the matchup; an empty zone is exposed", () => {
   );
   const thin = squad(["shield"], [1]);
   assert.equal(struck(thin, "rear").exposed, true);
-  assert.equal(
+  const ratio =
     attackDamage(cavalry, thin, 6, 0, "rear") /
-      attackDamage(cavalry, thin, 6, 0, "front"),
-    1.25,
+    attackDamage(cavalry, thin, 6, 0, "front");
+  assert.ok(Math.abs(ratio - 1.25) < 1e-9);
+});
+test("formations arrange themselves: lancers front, riders flanks, archers back", () => {
+  assert.deepEqual(
+    slotsOf(squad(["bow", "horse", "shield", "horse"])),
+    [4, 0, 1, 2],
   );
 });
 test("archers shoot best from the back rank, melee from the front", () => {

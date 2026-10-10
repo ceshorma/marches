@@ -489,3 +489,73 @@ export function camp(g: Graphics, x: number, y: number, t = 0) {
   smoke(g, x + 2, y + 2, t, 0.5);
   banner(g, x - 18, y + 6, 26, P.enemy);
 }
+
+// ── Battle ────────────────────────────────────────────────────────────────
+// Where a raid was destroyed: trampled ground, broken spears and bows, and
+// its banner fallen in the dirt. k fades it out (1 = fresh).
+export function fallen(g: Graphics, x: number, y: number, k: number, seed = 0) {
+  g.ellipse(x, y + 3, 22, 13).fill({ color: P.soil, alpha: 0.35 * k });
+  for (let j = 0; j < 6; j++) {
+    const a = rnd(seed, j) * Math.PI,
+      cx = x - 15 + rnd(seed, j + 7) * 30,
+      cy = y - 7 + rnd(seed, j + 13) * 16,
+      l = 6 + rnd(seed, j + 19) * 5;
+    g.moveTo(cx - Math.cos(a) * l, cy - Math.sin(a) * l * 0.6)
+      .lineTo(cx + Math.cos(a) * l, cy + Math.sin(a) * l * 0.6)
+      .stroke({ color: P.woodDark, width: 1.4, alpha: 0.8 * k });
+  }
+  // A round shield left on the ground.
+  g.circle(x + 9, y + 5, 3.6)
+    .fill({ color: P.enemyDark, alpha: 0.8 * k })
+    .stroke(line(k, 0.8));
+  // The banner, pole and cloth lying flat.
+  g.moveTo(x - 16, y + 9)
+    .lineTo(x + 2, y - 3)
+    .stroke({ color: P.woodDark, width: 1.6, alpha: k });
+  g.poly([
+    x + 2,
+    y - 3,
+    x + 12,
+    y - 9,
+    x + 9,
+    y - 2,
+    x + 13,
+    y + 1,
+    x + 4,
+    y + 2,
+  ])
+    .fill({ color: P.enemy, alpha: 0.85 * k })
+    .stroke(line(k, 0.8));
+}
+// The moment a raid breaks: its men scatter outward and fade (t = 0 → 1).
+export function rout(g: Graphics, x: number, y: number, t: number, n = 6) {
+  const e = 1 - (1 - t) * (1 - t);
+  for (let i = 0; i < n; i++) {
+    const a = (i / n) * Math.PI * 2 + 0.4,
+      d = 6 + e * 26;
+    g.circle(x + Math.cos(a) * d, y + Math.sin(a) * d, 3.2 * (1 - t * 0.5))
+      .fill({ color: P.enemy, alpha: 1 - t })
+      .stroke({ color: P.ink, width: 0.8, alpha: 0.7 * (1 - t) });
+  }
+  g.circle(x, y, 10 + e * 30).stroke({
+    color: P.flameLight,
+    width: 3 * (1 - t),
+    alpha: 1 - t,
+  });
+}
+// Loot carried home by raiders: a tied sack of grain.
+export function sack(g: Graphics, x: number, y: number) {
+  shadow(g, x, y + 4, 6, 2.5);
+  g.moveTo(x - 5, y + 4)
+    .quadraticCurveTo(x - 7, y - 3, x - 2, y - 4)
+    .lineTo(x + 2, y - 4)
+    .quadraticCurveTo(x + 7, y - 3, x + 5, y + 4)
+    .closePath()
+    .fill(P.wheat)
+    .stroke(line(1, 1));
+  g.moveTo(x - 2, y - 4)
+    .lineTo(x - 3, y - 7)
+    .moveTo(x + 2, y - 4)
+    .lineTo(x + 3, y - 7)
+    .stroke({ color: P.thatchDark, width: 1.2 });
+}

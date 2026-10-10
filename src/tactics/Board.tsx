@@ -27,6 +27,7 @@ import {
   adjacent,
   allTroops,
   activeRaids,
+  FALLEN,
 } from "./model";
 import type { Squad } from "./model";
 const BLUE = 0x326f97,
@@ -407,33 +408,25 @@ export default function Board() {
           y: f.y + ((i % 3) - 1) * 19 * k,
         }));
       };
-      // Where a formation slot of a squad sits on the map right now.
-      const slotWorld = (u: Squad, slot: number) => {
-        const p = squadPosition(b, u),
-          { a, b: side } = slotOffset(slot),
-          c = Math.cos(u.facing),
-          d = Math.sin(u.facing);
-        return { x: p.x + a * c - side * d, y: p.y + a * d + side * c };
-      };
       // Squads that can take one more troop where they stand.
       const hosts = () =>
         b.squads.filter(
           (u) => u.members.length < 6 && !deploymentError(b, u.cell),
         );
+      // The squad under a point that can take one more troop.
+      const hostAt = (p: { x: number; y: number }) =>
+        hosts().find((u) => {
+          const w = squadPosition(b, u);
+          return Math.hypot(w.x - p.x, w.y - p.y) < Math.max(R * 0.8, reach());
+        });
       // A distance on screen, in world units: touch targets stay finger-sized.
       const px = (n: number) => n / (world.scale.x || 1);
       const reach = () => Math.max(12, px(22));
       const drop = (p: { x: number; y: number }, type: TroopType) => {
         const s = useTactics.getState();
-        for (const u of hosts()) {
-          const taken = slotsOf(u);
-          for (let slot = 0; slot < 6; slot++) {
-            if (taken.includes(slot)) continue;
-            const w = slotWorld(u, slot);
-            if (Math.hypot(w.x - p.x, w.y - p.y) < reach())
-              return (s.dropTroop(u.cell, type, slot), true);
-          }
-        }
+        // Anywhere on a squad joins it; its formation arranges itself.
+        const host = hostAt(p);
+        if (host) return (s.dropTroop(host.cell, type), true);
         const id = cellAt(p);
         if (id < 0 || deploymentError(b, id)) return false;
         s.dropTroop(id, type);
@@ -1122,6 +1115,11 @@ export default function Board() {
             const e = raid.troop,
               p = squadPosition(b, e);
             token(overlay, e, p.x, p.y, e.facing, 1, ENEMY, flashOf(e));
+            // Raiders heading home carry their loot: still worth catching.
+            if (raid.outcome === "raided") {
+              art.sack(overlay, p.x - 14, p.y - 14);
+              art.sack(overlay, p.x + 12, p.y - 16);
+            }
             let from = p;
             for (const id of raid.phase === "fight" ? [] : e.path) {
               const c = b.cells[id],
@@ -1138,6 +1136,20 @@ export default function Board() {
             }
             morale(e, p.x, p.y);
           }
+        }
+        // Raids destroyed in battle: the men scatter, then what they
+        // dropped stays on the field for a while.
+        for (const f of b.fallen ?? []) {
+          const age = b.time - f.time;
+          if (age > FALLEN) continue;
+          art.fallen(
+            overlay,
+            f.x,
+            f.y,
+            Math.min(1, (FALLEN - age) / 8),
+            f.time,
+          );
+          if (age < 1.2) art.rout(overlay, f.x, f.y, age / 1.2, f.units.length);
         }
         // Clashes: contested hexes tint and a crossed marker sits between foes.
         const clashes = new Set<string>();
@@ -1284,8 +1296,21 @@ export default function Board() {
             .lineTo(f.x - 26, f.y)
             .stroke({ color: tone, width: 1, alpha: 0.35 });
           // A new troop walks in from its house before taking its place.
-          const WALK = 1.8,
-            arrival = o.lastArrival,
+          // Longer walks (spoils carried in from the field) take longer.
+          const arrival = o.lastArrival,
+            WALK =
+              arrival?.from !== undefined
+                ? Math.min(
+                    5,
+                    Math.max(
+                      1.8,
+                      Math.hypot(
+                        b.cells[arrival.from].x - f.x,
+                        b.cells[arrival.from].y - f.y,
+                      ) / 160,
+                    ),
+                  )
+                : 1.8,
             walking =
               arrival &&
               arrival.from !== undefined &&
@@ -1399,17 +1424,15 @@ export default function Board() {
                 .fill({ color: BLUE, alpha: over ? 0.22 : 0.08 + beat * 0.06 })
                 .stroke({ color: BLUE, width: over ? 3 : 2, alpha: 0.6 });
             }
+            // Squads with room light up as a whole: drop anywhere on them.
+            const target = hostAt(at);
             for (const u of hosts()) {
-              const taken = slotsOf(u);
-              for (let slot = 0; slot < 6; slot++) {
-                if (taken.includes(slot)) continue;
-                const w = slotWorld(u, slot),
-                  near = Math.hypot(w.x - at.x, w.y - at.y) < reach();
-                overlay
-                  .roundRect(w.x - 8, w.y - 8, 16, 16, 4)
-                  .fill({ color: BLUE, alpha: near ? 0.5 : 0.15 + beat * 0.15 })
-                  .stroke({ color: BLUE, width: near ? 2.5 : 1.5 });
-              }
+              const w = squadPosition(b, u),
+                near = u === target;
+              overlay
+                .circle(w.x, w.y, R * 0.72)
+                .fill({ color: BLUE, alpha: near ? 0.2 : 0.06 + beat * 0.06 })
+                .stroke({ color: BLUE, width: near ? 3 : 2, alpha: 0.7 });
             }
             // The troop reads green or red against the next wave.
             const next = upcoming(b).find((e) => e.kind === "enemy");

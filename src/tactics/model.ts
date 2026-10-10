@@ -52,6 +52,9 @@ export type Raid = {
   // Scripted wave this raid belongs to, and whether its outcome was applied.
   wave?: number;
   handled?: boolean;
+  // When the raid was destroyed in battle, and whether its spoils were taken.
+  fell?: number;
+  spoils?: boolean;
 };
 // A scripted mission: enemy waves and friendly arrivals on a shared clock.
 export type WaveSpec = {
@@ -165,6 +168,8 @@ export type Battle = {
   pressure?: { ally: number; enemy: number }[];
   controlClock?: number;
   bases?: { allyReady: number; enemyReady: number; sequence: number };
+  // Raids destroyed in battle: what is left on the field for a while.
+  fallen?: { x: number; y: number; time: number; units: TroopType[] }[];
   strikes?: {
     x: number;
     y: number;
@@ -407,6 +412,8 @@ export function squadPosition(b: Battle, s: Squad) {
   };
 }
 
+// Seconds the remains of a destroyed raid stay on the field.
+export const FALLEN = 30;
 // Combat is resolved in timed exchanges; effects are emitted only by real attacks.
 export function advanceRaid(b: Battle, dt: number) {
   b.strikes = (b.strikes ?? []).filter((hit) => b.time - hit.time < 0.8);
@@ -452,86 +459,98 @@ function stepRaid(b: Battle, r: Raid, dt: number) {
     b.strikes!.push({ x: p.x, y: p.y, tx: t.x, ty: t.y, time: b.time, enemy });
     source.cooldown = 1.35;
   };
+  // Raiders do not run from a fight: broken, they are destroyed where they
+  // stand. Only raiders who got their loot head home, and can be caught.
+  const destroy = () => {
+    if (r.outcome === "active") {
+      r.outcome = "protected";
+      r.resolvedAt = b.time;
+    }
+    r.phase = "gone";
+    r.fell = b.time;
+    b.fallen = [
+      ...(b.fallen ?? []).filter((f) => b.time - f.time < FALLEN),
+      { ...at, time: b.time, units: [...e.members] },
+    ];
+  };
   const withdraw = () => {
     r.phase = "retreat";
-    r.outcome = r.supplies > 0 ? "protected" : "raided";
+    r.outcome = "raided";
     r.resolvedAt = b.time;
     e.engaged = undefined;
-    e.routing = true;
     const path = route(b, e, r.home ?? 3 * COLS + 17);
     e.path = e.progress > 0 ? [e.path[0], ...path] : path;
   };
-  if (r.phase !== "retreat") {
-    if (defenders.length) {
-      r.phase = "fight";
-      const target = defenders
-        .slice()
-        .sort(
-          (a, c) =>
-            Math.hypot(
-              squadPosition(b, a).x - at.x,
-              squadPosition(b, a).y - at.y,
-            ) -
-            Math.hypot(
-              squadPosition(b, c).x - at.x,
-              squadPosition(b, c).y - at.y,
-            ),
-        )[0];
-      const p = squadPosition(b, target);
-      e.engaged = target.id;
-      e.facing = e.targetFacing = Math.atan2(p.y - at.y, p.x - at.x);
-      for (const s of defenders) {
-        s.engaged = e.id;
-        const p = squadPosition(b, s);
-        if (!s.disengaging) {
-          hold(s);
-          s.targetFacing = Math.atan2(at.y - p.y, at.x - p.x);
-        }
-        if (!s.cooldown) hit(s, e, 7, false);
+  if (defenders.length) {
+    r.phase = "fight";
+    const target = defenders
+      .slice()
+      .sort(
+        (a, c) =>
+          Math.hypot(
+            squadPosition(b, a).x - at.x,
+            squadPosition(b, a).y - at.y,
+          ) -
+          Math.hypot(
+            squadPosition(b, c).x - at.x,
+            squadPosition(b, c).y - at.y,
+          ),
+      )[0];
+    const p = squadPosition(b, target);
+    e.engaged = target.id;
+    e.facing = e.targetFacing = Math.atan2(p.y - at.y, p.x - at.x);
+    for (const s of defenders) {
+      s.engaged = e.id;
+      const p = squadPosition(b, s);
+      if (!s.disengaging) {
+        hold(s);
+        s.targetFacing = Math.atan2(at.y - p.y, at.x - p.x);
       }
-      // Both sides fire in the same exchange, even if this breaks cohesion.
-      if (!e.cooldown) hit(e, target, 5, true);
-      for (const s of defenders)
-        if (s.cohesion! <= 0) {
-          s.routing = true;
-          s.engaged = undefined;
-          s.disengaging = true;
-          const candidates = b.cells
-            .filter(
-              (c) =>
-                !blocked(b, c.id, s.id) &&
-                Math.hypot(c.x - at.x, c.y - at.y) > DX * 3,
-            )
-            .sort(
-              (a, c) =>
-                Math.hypot(a.x - b.cells[s.cell].x, a.y - b.cells[s.cell].y) -
-                Math.hypot(c.x - b.cells[s.cell].x, c.y - b.cells[s.cell].y),
-            );
-          for (const c of candidates) {
-            const p = route(b, s, c.id);
-            if (p.length) {
-              s.path = s.progress > 0 ? [s.path[0], ...p] : p;
-              break;
-            }
+      if (!s.cooldown) hit(s, e, 7, false);
+    }
+    // Both sides fire in the same exchange, even if this breaks cohesion.
+    if (!e.cooldown) hit(e, target, 5, true);
+    for (const s of defenders)
+      if (s.cohesion! <= 0) {
+        s.routing = true;
+        s.engaged = undefined;
+        s.disengaging = true;
+        const candidates = b.cells
+          .filter(
+            (c) =>
+              !blocked(b, c.id, s.id) &&
+              Math.hypot(c.x - at.x, c.y - at.y) > DX * 3,
+          )
+          .sort(
+            (a, c) =>
+              Math.hypot(a.x - b.cells[s.cell].x, a.y - b.cells[s.cell].y) -
+              Math.hypot(c.x - b.cells[s.cell].x, c.y - b.cells[s.cell].y),
+          );
+        for (const c of candidates) {
+          const p = route(b, s, c.id);
+          if (p.length) {
+            s.path = s.progress > 0 ? [s.path[0], ...p] : p;
+            break;
           }
         }
-    } else {
-      if (r.phase === "fight")
-        r.phase =
-          e.cell === (r.target ?? 8 * COLS + 14) && !e.path.length
+      }
+  } else {
+    if (r.phase === "fight")
+      r.phase =
+        r.outcome === "raided"
+          ? "retreat"
+          : e.cell === (r.target ?? 8 * COLS + 14) && !e.path.length
             ? "loot"
             : "approach";
-      e.cohesion = Math.min(
-        r.strength ?? (b.outpost ? 30 : 100),
-        e.cohesion + dt * 2,
-      );
-      for (const s of b.squads)
-        if (!s.routing)
-          s.cohesion = Math.min(100, (s.cohesion ?? 100) + dt * 3);
-    }
-    r.pressure = 1 - e.cohesion / 100;
-    if (e.cohesion <= 0 || r.supplies <= 0) withdraw();
+    e.cohesion = Math.min(
+      r.strength ?? (b.outpost ? 30 : 100),
+      e.cohesion + dt * 2,
+    );
+    for (const s of b.squads)
+      if (!s.routing) s.cohesion = Math.min(100, (s.cohesion ?? 100) + dt * 3);
   }
+  r.pressure = 1 - e.cohesion / 100;
+  if (e.cohesion <= 0) return destroy();
   if (r.phase === "fight") return;
   if (r.phase === "loot") {
     const take = Math.min(r.supplies, dt * 4);

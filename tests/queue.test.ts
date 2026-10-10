@@ -54,15 +54,15 @@ test("a wave gathers in view for its last seconds before setting out", () => {
   assert.deepEqual(gathering(b), []);
   assert.equal(b.raids!.length, 1);
 });
-test("dropping a waiting troop on a slot reinforces that exact position", () => {
+test("dropping a waiting troop on a squad joins it in an automatic position", () => {
   useTactics.setState({ scenario: "campaign", missionIndex: 0, unlocked: 0 });
   useTactics.getState().reset();
   const g = useTactics.getState();
   g.dropTroop(cell(4, 8), "shield");
   const u = useTactics.getState().battle.squads[0];
   assert.deepEqual(slotsOf(u), [1]);
-  g.dropTroop(cell(4, 8), "shield", 5);
-  assert.deepEqual(slotsOf(u), [1, 5]);
+  g.dropTroop(cell(4, 8), "shield");
+  assert.deepEqual(slotsOf(u), [1, 0]);
   assert.equal(useTactics.getState().selected, u.id);
   assert.equal(waiting(useTactics.getState().battle.outpost!), 0);
 });

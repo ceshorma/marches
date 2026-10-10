@@ -40,6 +40,9 @@ const entries: Entry[] = [
     },
   ],
   ["Calcinado", (g, x, y) => art.scorched(g, x, y, 1, 2)],
+  ["Incursión caída", (g, x, y) => art.fallen(g, x, y, 1, 3)],
+  ["Desbandada", (g, x, y, t) => art.rout(g, x, y, (t % 1.5) / 1.5)],
+  ["Botín", (g, x, y) => (art.sack(g, x - 8, y), art.sack(g, x + 8, y - 2))],
 ];
 export default function Sheet() {
   const ref = useRef<HTMLDivElement>(null);

@@ -1,4 +1,4 @@
-import { preferredSlot, slotsOf, troopNames } from "./combat";
+import { troopNames } from "./combat";
 import type { TroopType } from "./combat";
 import { createBattle, adjacent, blocked, route } from "./model";
 import type { Battle, Raid, Squad, WaveSpec } from "./model";
@@ -89,22 +89,18 @@ export function deploymentError(b: Battle, id: number): string | null {
     return "Posición bajo amenaza";
   return null;
 }
-// Adds a reserve troop at a formation slot (preferred slot when omitted).
+// Adds a reserve troop to the squad on that cell (or a new one there); the
+// formation arranges itself (see slotsOf).
 export function addReserveTroop(
   b: Battle,
   id: number,
   type: TroopType,
-  slot?: number,
 ): string | null {
   const error = deploymentError(b, id);
   if (error) return error;
   const o = b.outpost!;
   if (o.reserve[type] <= 0) return "No quedan tropas de ese tipo en reserva";
-  const existing = b.squads.find((u) => u.cell === id);
-  const taken = existing ? slotsOf(existing) : [];
-  const at = slot ?? preferredSlot(type, taken);
-  if (at < 0 || at > 5 || taken.includes(at)) return "Posición ocupada";
-  let unit = existing;
+  let unit = b.squads.find((u) => u.cell === id);
   if (!unit) {
     o.serial++;
     unit = {
@@ -114,7 +110,6 @@ export function addReserveTroop(
       facing: 0,
       targetFacing: 0,
       members: [],
-      layout: [],
       path: [],
       progress: 0,
       hold: true,
@@ -122,22 +117,9 @@ export function addReserveTroop(
     };
     b.squads.push(unit);
   }
-  unit.layout = [...taken, at];
   unit.members.push(type);
   o.reserve[type]--;
   if (id !== o.fort && !adjacent(o.fort).includes(id)) o.towerDeploys++;
-  return null;
-}
-// Moves a member to another slot, swapping with whoever stands there.
-export function moveMember(s: Squad, from: number, to: number): string | null {
-  if (s.engaged || s.routing) return "No se puede reordenar en combate";
-  const layout = [...slotsOf(s)],
-    i = layout.indexOf(from),
-    j = layout.indexOf(to);
-  if (i < 0 || to < 0 || to > 5) return "Posición inválida";
-  layout[i] = to;
-  if (j >= 0) layout[j] = from;
-  s.layout = layout;
   return null;
 }
 // Convenience used by simulation tests; the live UI chooses the target cell.
@@ -216,7 +198,9 @@ export const queue = (o: Outpost): TroopType[] =>
   (["shield", "bow", "horse"] as const).flatMap((t) =>
     Array<TroopType>(o.reserve[t]).fill(t),
   );
-function arrive(b: Battle, type: TroopType) {
+// A new troop for the fort: from a settled house, or from the battlefield
+// (`from`) when it comes with the spoils of a destroyed raid.
+function arrive(b: Battle, type: TroopType, from?: number) {
   const o = b.outpost!;
   o.arrivals++;
   if (waiting(o) >= FORT_CAP) {
@@ -239,10 +223,16 @@ function arrive(b: Battle, type: TroopType) {
   o.lastArrival = {
     type,
     time: b.time,
-    from: home.length ? home[o.arrivals % Math.min(3, home.length)] : undefined,
+    from:
+      from ??
+      (home.length ? home[o.arrivals % Math.min(3, home.length)] : undefined),
   };
   notify(o, `+1 ${troopNames[type].toLowerCase()}`, o.fort, "good", b.time + 4);
 }
+export const spoilsOf = (units: TroopType[]) =>
+  (["shield", "bow", "horse"] as const)
+    .map((t) => [t, units.filter((u) => u === t).length] as const)
+    .sort((a, c) => c[1] - a[1])[0][0];
 // Seconds an enemy wave spends gathering in view before it sets out.
 export const GATHER = 15;
 // Waves forming at their entry points: who, where and how far along.
@@ -371,6 +361,13 @@ export function updateOutpost(b: Battle, dt: number) {
       continue;
     }
     // Towers are not sacked outright: they fall when their land is eaten.
+  }
+  // A raid destroyed in battle leaves its arms behind: they equip one more
+  // troop of its most common kind, who walks to the fort from the field.
+  for (const r of b.raids) {
+    if (r.fell === undefined || r.spoils) continue;
+    r.spoils = true;
+    arrive(b, spoilsOf(r.troop.members), r.troop.cell);
   }
   const before = b.raids.length;
   b.raids = b.raids.filter((r) => r.phase !== "gone");

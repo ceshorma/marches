@@ -3,7 +3,6 @@ import {
   createScout,
   updateOutpost,
   addReserveTroop,
-  moveMember,
 } from "./outpost";
 import {
   createMission,
@@ -24,8 +23,7 @@ type State = {
   // A waiting troop picked up from the yard: the next tap places it.
   held: TroopType | null;
   hold: (type: TroopType | null) => void;
-  arrange: (squad: string, from: number, to: number) => void;
-  dropTroop: (cell: number, type: TroopType, slot?: number) => void;
+  dropTroop: (cell: number, type: TroopType) => void;
   selectedBase: "ally" | "enemy" | null;
   deploy: (type?: TroopType) => void;
   paused: boolean;
@@ -86,9 +84,9 @@ export const useTactics = create<State>((set, get) => ({
       message: null,
     }),
   hold: (held) => set({ held, selected: null, selectedBase: null }),
-  dropTroop: (cell, type, slot) => {
+  dropTroop: (cell, type) => {
     const s = get(),
-      message = addReserveTroop(s.battle, cell, type, slot);
+      message = addReserveTroop(s.battle, cell, type);
     set({
       message,
       held: null,
@@ -97,12 +95,6 @@ export const useTactics = create<State>((set, get) => ({
         ? { selected: s.battle.squads.find((u) => u.cell === cell)!.id }
         : {}),
     });
-  },
-  arrange: (id, from, to) => {
-    const s = get(),
-      u = s.battle.squads.find((u) => u.id === id);
-    if (!u) return;
-    set({ message: moveMember(u, from, to), revision: s.revision + 1 });
   },
   deploy: (type = "shield") => {
     const s = get();

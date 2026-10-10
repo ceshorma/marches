@@ -7,7 +7,7 @@ Eres el oficial que recibe un cuartel aislado en la frontera. Cada misión es un
 - **Lo propio es la tierra.** El cuartel y las torres proyectan tierra; los enemigos se la comen casilla a casilla y, si se comen la de una torre, la torre cae. La tierra trae tropas: más tierra, más llegadas. Los objetivos se miden en casillas.
 - **El ritmo marca el progreso.** Cada cierto tiempo llega un enemigo que ataca y, entre medias, una tropa nueva. Una línea de tiempo bajo el objetivo lo muestra: incursiones en rojo con sus tropas, refuerzos en azul, y puntos que cuentan las oleadas resueltas.
 - **Las señales salen de la interacción, no del texto.** Casillas que laten, la silueta de la torre al seleccionar un escuadrón, anillos verdes o rojos sobre los enemigos según si los vences. La cabecera solo dice el objetivo y, unos segundos, el contexto.
-- **La formación importa.** Seis posiciones (frente/atrás × flanco izquierdo/centro/flanco derecho). El golpe cae en la zona por la que llega el enemigo; una zona vacía deja el escuadrón expuesto.
+- **La formación importa** (y se ordena sola). Seis posiciones (frente/atrás × flanco izquierdo/centro/flanco derecho). El golpe cae en la zona por la que llega el enemigo; una zona vacía deja el escuadrón expuesto.
 - **La presión se acumula a la vista.** Los refuerzos esperan en un patio junto al cuartel (máximo 6; si llega uno con el patio lleno, se pierde) y se despliegan arrastrándolos. Cada oleada se reúne 15 s a la vista en su entrada antes de salir.
 - **Sin estados sin salida.** Si se acaban las oleadas sin cumplir el objetivo, la misión se pierde y se reintenta.
 
@@ -29,7 +29,7 @@ Las metas de tierra se comprueban al pasar la última oleada. Las oleadas con ob
 ## Implementación
 
 - `src/tactics/campaign.ts`: `MissionConfig` con mapa, emplazamientos, tropas iniciales, reserva, guion (`waves`, `arrivals`, `trigger`) y `check`.
-- `src/tactics/outpost.ts`: guion sobre el reloj, varias incursiones a la vez (`b.raids`), saqueo de torres y cuartel, `upcoming()` para la línea de tiempo, despliegue por posición (`addReserveTroop(…, slot)`) y reordenación (`moveMember`).
+- `src/tactics/outpost.ts`: guion sobre el reloj, varias incursiones a la vez (`b.raids`), saqueo de torres y cuartel, `upcoming()` para la línea de tiempo, despliegue sobre un escuadrón (`addReserveTroop`) con formación automática y botín de las incursiones destruidas.
 - `src/tactics/combat.ts`: posiciones, zonas de impacto (`zoneFrom`, `struck`) y rendimiento por posición (`slotWeight`).
 - `src/tactics/guide.ts`: marcas sobre casillas y lecturas sobre tropas.
 - `tests/campaign.test.ts`: cada misión se gana con un bot sencillo (despliega lo que llega, construye, defiende) y se pierde si no se hace nada.

@@ -62,19 +62,25 @@ export const zoneSlots: Record<Zone, number[]> = {
   right: [2, 5],
 };
 export const isFront = (slot: number) => slot < 3;
-// Preferred free slot for a new member: archers behind, the rest in front.
+// Preferred free slot for a new member: lancers hold the front centre,
+// riders the flanks, archers shoot from behind.
+const slotOrder: Record<TroopType, number[]> = {
+  shield: [1, 0, 2, 4, 3, 5],
+  horse: [0, 2, 3, 5, 1, 4],
+  bow: [4, 3, 5, 1, 0, 2],
+};
 export function preferredSlot(type: TroopType, taken: number[]): number {
-  const order = type === "bow" ? [4, 3, 5, 1, 0, 2] : [1, 0, 2, 4, 3, 5];
-  return order.find((slot) => !taken.includes(slot)) ?? -1;
+  return slotOrder[type].find((slot) => !taken.includes(slot)) ?? -1;
 }
-// Slot of each member; squads without an explicit layout get a sensible one.
+// Slot of each member. Formations are automatic: lancers pick first, then
+// riders, then archers. Enemy waves may still carry an explicit layout.
+const pickOrder: Record<TroopType, number> = { shield: 0, horse: 1, bow: 2 };
 export function slotsOf(s: Pick<Squad, "members" | "layout">): number[] {
   if (s.layout && s.layout.length === s.members.length) return s.layout;
   const taken: number[] = [];
-  // Place archers last so the front fills with melee first.
   const order = s.members
     .map((m, i) => [m, i] as const)
-    .sort((a, c) => Number(a[0] === "bow") - Number(c[0] === "bow"));
+    .sort((a, c) => pickOrder[a[0]] - pickOrder[c[0]]);
   const slots = Array<number>(s.members.length);
   for (const [m, i] of order) {
     slots[i] = preferredSlot(m, taken);
