@@ -543,9 +543,19 @@ export default function Board() {
           const z = fit * s.zoom;
           pan = b.outpost
             ? {
-                x: lastW / 2 - DX * (wide && !narrow ? 8.75 : 3.8) * z,
+                x: narrow
+                  ? // Phones: keep the whole yard west of the fort in view.
+                    Math.max(
+                      lastW / 2 - DX * 3.8 * z,
+                      16 -
+                        (b.cells[b.outpost.fort].x -
+                          112 -
+                          44 * Math.max(1, 20 / (16 * z))) *
+                          z,
+                    )
+                  : lastW / 2 - DX * (wide ? 8.75 : 3.8) * z,
                 y: narrow
-                  ? (lastH + 210) / 2 - R * 9 * z
+                  ? (lastH + 120) / 2 - R * 9 * z
                   : wide
                     ? (lastH + 60) / 2 - R * 8.25 * z
                     : lastH / 2 - R * 12 * z,
@@ -1478,7 +1488,7 @@ export default function Board() {
         for (const threat of threats) {
           const sx = threat.x * world.scale.x + pan.x,
             sy = threat.y * world.scale.y + pan.y,
-            top = app.screen.width < 700 ? 240 : 120,
+            top = app.screen.width < 700 ? 160 : 120,
             bottom = app.screen.height - 90;
           if (sx >= 0 && sx <= app.screen.width && sy >= top && sy <= bottom)
             continue;

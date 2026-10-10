@@ -47,7 +47,7 @@ Un ciclo continuo sobre el mismo mapa:
 
 Las tropas llegan al patio según la tierra que tienes, alternando lanceros, arqueros y caballería. El patio admite seis tropas. Se pueden formar hasta cinco escuadrones o añadir miembros a uno detenido (máximo seis), junto al cuartel o a una torre y fuera de combate. Los refuerzos no se despliegan automáticamente. Las patrullas vuelven tras retirarse, con una pausa de 28 segundos. No hay pantallas de victoria, salto de misión ni final automático: puedes seguir expandiendo y defendiendo.
 
-«Juego libre» conserva el escenario avanzado de tres frentes; «La frontera» vuelve a este modo y «Campaña» regresa a la campaña. El módulo `src/tactics/outpost.ts` contiene construcción, llegadas y ciclo de incursiones.
+El menú (☰) pausa la partida y reúne los modos (Campaña, La frontera y Juego libre, el escenario avanzado de tres frentes), las misiones desbloqueadas, reiniciar y la ayuda. El módulo `src/tactics/outpost.ts` contiene construcción, llegadas y ciclo de incursiones.
 
 ## Escenario avanzado
 
@@ -89,7 +89,7 @@ npm run preview
 - La formación completa ocupa una celda. La punta azul indica el frente; escudos y lanzas están delante, arcos detrás.
 - Los escuadrones giran solos hacia el enemigo. Para detener uno, toca su propia casilla.
 - Es posible cambiar destino en marcha. El nuevo recorrido empieza al finalizar el paso actual, sin saltos.
-- Arrastrar terreno desplaza la cámara. Rueda y botones +/− hacen zoom.
+- Arrastrar terreno desplaza la cámara. Pellizcar (táctil), la rueda o los botones +/− (solo con ratón) hacen zoom.
 - Espacio pausa; 1, 2 y 4 cambian velocidad; H encuadra el mapa; Escape cierra selección.
 - En móvil se muestra un sector ampliado para poder tocar las tropas; arrastrar terreno permite recorrer el tablero.
 

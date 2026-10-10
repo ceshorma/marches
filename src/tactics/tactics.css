@@ -943,3 +943,168 @@ button:focus-visible {
     padding: 6px 0 4px;
   }
 }
+
+/* Pause menu: missions, modes, restart and help, off the board. */
+.menu-backdrop {
+  position: absolute;
+  inset: 0;
+  z-index: 10;
+  display: flex;
+  align-items: flex-start;
+  justify-content: flex-end;
+  padding: 76px 20px 20px;
+  background: #34475026;
+}
+.game-menu {
+  width: min(340px, 100%);
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 16px 18px 18px;
+  background: #f8f6ef;
+  border: 1px solid #d7d7c9;
+  border-radius: 14px;
+  box-shadow: 0 10px 30px #34475026;
+}
+.menu-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+.menu-head strong {
+  font: 18px Georgia;
+}
+.game-menu small {
+  font-size: 11px;
+  color: #6f766c;
+  margin-top: 6px;
+}
+.game-menu .campaign-steps {
+  position: static;
+  display: flex;
+  gap: 6px;
+  padding: 0;
+  border: 0;
+  background: none;
+}
+.tactical-game .game-menu .campaign-steps button {
+  min-width: 40px;
+  min-height: 40px;
+  border: 1px solid #c6cec2;
+  font-size: 14px;
+}
+.menu-modes {
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+.tactical-game .menu-modes button,
+.tactical-game .menu-restart {
+  min-height: 40px;
+  padding: 0 12px;
+  border: 1px solid #c6cec2;
+  border-radius: 20px;
+  font-size: 13px;
+}
+.tactical-game .menu-restart {
+  align-self: flex-start;
+  gap: 6px;
+}
+.game-menu .controls {
+  position: static;
+  padding: 10px 0 0;
+  background: none;
+  border: 0;
+  border-top: 1px solid #dadccd;
+  border-radius: 0;
+  gap: 8px;
+  font-size: 12px;
+  color: #56605a;
+}
+.track .event em {
+  font-style: normal;
+  font-size: 10px;
+  align-self: center;
+}
+/* Touch screens zoom with a pinch; the buttons are for mice. */
+@media (pointer: coarse), (max-width: 700px) {
+  .tactical-game .zoom-button {
+    display: none;
+  }
+}
+/* Phones: one compact strip on top, the map below. */
+@media (max-width: 700px) {
+  .tactical-header {
+    padding: 10px 12px;
+  }
+  .brand-name,
+  .brand:after {
+    display: none;
+  }
+  .brand span {
+    margin-top: 6px;
+    max-width: 170px;
+  }
+  .region {
+    top: 44px;
+  }
+  .squad-list,
+  .squad-list.expanded {
+    top: 158px;
+  }
+  .menu-backdrop {
+    padding: 64px 12px 12px;
+  }
+}
+.brand-name {
+  font-weight: 400;
+}
+.menu-head strong span {
+  display: block;
+  margin-top: 4px;
+  font: 12px Arial;
+  color: #6f766c;
+}
+@media (max-width: 700px) {
+  /* The mission name lives in the menu on phones. */
+  .brand {
+    display: none;
+  }
+  .region {
+    top: 60px;
+  }
+  .squad-list,
+  .squad-list.expanded {
+    top: 170px;
+  }
+  .track {
+    width: 170px;
+  }
+}
+@media (max-width: 700px) {
+  .tactical-header {
+    justify-content: flex-end;
+  }
+}
+.game-menu {
+  min-width: 0;
+  box-sizing: border-box;
+}
+.game-menu .controls span {
+  white-space: normal;
+}
+/* Never let focus or overflow shift the game sideways. */
+.tactical-game {
+  overflow: clip;
+}
+@media (max-width: 380px) {
+  .track {
+    width: 130px;
+  }
+  .land-meter .bar {
+    width: 36px;
+  }
+  .timeline {
+    gap: 6px;
+  }
+}

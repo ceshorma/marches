@@ -16,7 +16,7 @@ import {
   Shield,
   X,
   RotateCcw,
-  MousePointer2,
+  Menu,
 } from "lucide-react";
 import Board from "./Board";
 import { useTactics } from "./state";
@@ -24,7 +24,8 @@ import "./tactics.css";
 export default function TacticalApp() {
   const s = useTactics(),
     [generation, setGeneration] = useState(0),
-    [help, setHelp] = useState(false),
+    [menu, setMenu] = useState(false),
+    [wasPaused, setWasPaused] = useState(false),
     [recruitType, setRecruitType] = useState<TroopType>("shield"),
     [picked, setPicked] = useState<number | null>(null),
     [showFormation, setShowFormation] = useState(false);
@@ -32,6 +33,25 @@ export default function TacticalApp() {
   const lesson = s.battle.lesson,
     mission = lesson ? missions[lesson.index] : null;
   const unit = s.battle.squads.find((u) => u.id === s.selected);
+  // The menu pauses the game and restores the previous state on close.
+  const openMenu = () => {
+    setWasPaused(useTactics.getState().paused);
+    useTactics.setState({ paused: true });
+    setMenu(true);
+  };
+  const closeMenu = () => {
+    setMenu(false);
+    useTactics.setState({ paused: wasPaused });
+  };
+  const goTo = (scenario: "campaign" | "outpost" | "fronts") => {
+    if (scenario === "campaign") s.openCampaign();
+    else {
+      useTactics.setState({ scenario });
+      s.reset();
+    }
+    setGeneration((g) => g + 1);
+    setMenu(false);
+  };
   useEffect(() => {
     let last = performance.now(),
       acc = 0;
@@ -84,7 +104,7 @@ export default function TacticalApp() {
       <Board key={`${generation}-${s.scenario}-${s.missionIndex}`} />
       <header className="tactical-header">
         <div className="brand">
-          MARCHES
+          <b className="brand-name">MARCHES</b>
           <span>
             {mission
               ? `${s.missionIndex + 1} / ${missions.length} · ${mission.name.toUpperCase()}`
@@ -171,6 +191,9 @@ export default function TacticalApp() {
             onClick={() => useTactics.setState({ paused: !s.paused })}
           >
             {s.paused ? <Play size={18} /> : <Pause size={18} />}
+          </button>
+          <button aria-label="Abrir menú" onClick={openMenu}>
+            <Menu size={19} />
           </button>
         </div>
       </header>
@@ -361,25 +384,6 @@ export default function TacticalApp() {
           </button>
         </section>
       )}
-      {lesson && (
-        <nav className="campaign-steps" aria-label="Misiones">
-          {missions.map((m, i) => (
-            <button
-              key={m.name}
-              disabled={i > s.unlocked}
-              aria-label={`Misión ${i + 1}: ${m.name}`}
-              title={m.name}
-              className={i === lesson.index ? "chosen" : ""}
-              onClick={() => {
-                s.startMission(i);
-                setGeneration((g) => g + 1);
-              }}
-            >
-              {i + 1}
-            </button>
-          ))}
-        </nav>
-      )}
       <div className="map-tools">
         <button
           aria-label="Centrar mapa"
@@ -388,6 +392,7 @@ export default function TacticalApp() {
           <Focus size={19} />
         </button>
         <button
+          className="zoom-button"
           aria-label="Alejar mapa"
           onClick={() =>
             useTactics.setState({ zoom: Math.max(0.65, s.zoom / 1.2) })
@@ -396,6 +401,7 @@ export default function TacticalApp() {
           <Minus size={19} />
         </button>
         <button
+          className="zoom-button"
           aria-label="Acercar mapa"
           onClick={() =>
             useTactics.setState({ zoom: Math.min(2.8, s.zoom * 1.2) })
@@ -415,56 +421,92 @@ export default function TacticalApp() {
             <Plus size={17} />
           </button>
         )}
-        {s.scenario !== "campaign" && (
-          <button
-            className="scenario-switch"
-            aria-label="Abrir campaña"
-            onClick={() => {
-              s.openCampaign();
-              setGeneration((g) => g + 1);
-            }}
-          >
-            Campaña
-          </button>
-        )}
-        <button
-          className="scenario-switch"
-          aria-label="Cambiar escenario"
-          onClick={() => {
-            s.switchScenario();
-            setGeneration((g) => g + 1);
-          }}
-        >
-          {s.scenario === "outpost" ? "Juego libre" : "La frontera"}
-        </button>
-        <button
-          aria-label="Mostrar controles"
-          className={help ? "chosen" : ""}
-          onClick={() => setHelp(!help)}
-        >
-          <MousePointer2 size={17} />
-        </button>
-        <button
-          aria-label="Reiniciar maniobras"
-          title="Reiniciar maniobras"
-          onClick={() => {
-            s.reset();
-            setGeneration((g) => g + 1);
-          }}
-        >
-          <RotateCcw size={17} />
-        </button>
       </div>
-      {help && (
-        <aside className="controls">
-          <span>Arrastrar tropas del patio · desplegar</span>
-          <span>Seleccionar + destino, o arrastrar escuadrón</span>
-          <span>Arrastrar terreno · mover cámara</span>
-          <span>Rueda · zoom</span>
-          <span>
-            Espacio · pausa &nbsp; H · centrar &nbsp; 1 2 4 · velocidad
-          </span>
-        </aside>
+      {menu && (
+        <div className="menu-backdrop" onClick={closeMenu}>
+          <section
+            className="game-menu"
+            role="dialog"
+            aria-label="Menú"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="menu-head">
+              <strong>
+                Pausa
+                {mission && (
+                  <span>
+                    {s.missionIndex + 1} / {missions.length} · {mission.name}
+                  </span>
+                )}
+              </strong>
+              <button aria-label="Cerrar menú" onClick={closeMenu}>
+                <X size={18} />
+              </button>
+            </div>
+            {lesson && (
+              <>
+                <small>Campaña · misión</small>
+                <nav className="campaign-steps" aria-label="Misiones">
+                  {missions.map((m, i) => (
+                    <button
+                      key={m.name}
+                      disabled={i > s.unlocked}
+                      aria-label={`Misión ${i + 1}: ${m.name}`}
+                      title={m.name}
+                      className={i === lesson.index ? "chosen" : ""}
+                      onClick={() => {
+                        s.startMission(i);
+                        setGeneration((g) => g + 1);
+                        setMenu(false);
+                      }}
+                    >
+                      {i + 1}
+                    </button>
+                  ))}
+                </nav>
+              </>
+            )}
+            <small>Modo</small>
+            <div className="menu-modes">
+              {(
+                [
+                  ["campaign", "Campaña"],
+                  ["outpost", "La frontera"],
+                  ["fronts", "Juego libre"],
+                ] as const
+              ).map(([scenario, label]) => (
+                <button
+                  key={scenario}
+                  className={s.scenario === scenario ? "chosen" : ""}
+                  onClick={() => goTo(scenario)}
+                >
+                  {label}
+                </button>
+              ))}
+            </div>
+            <button
+              className="menu-restart"
+              onClick={() => {
+                s.reset();
+                setGeneration((g) => g + 1);
+                setMenu(false);
+              }}
+            >
+              <RotateCcw size={16} /> Reiniciar
+            </button>
+            <div className="controls">
+              <span>
+                Arrastra una tropa del patio, o tócala y toca su destino
+              </span>
+              <span>Toca un escuadrón y luego una casilla para moverlo</span>
+              <span>
+                Arrastra el terreno para mover la cámara · pellizca o usa la
+                rueda para el zoom
+              </span>
+              <span>Espacio · pausa · H · centrar · 1 2 4 · velocidad</span>
+            </div>
+          </section>
+        </div>
       )}
       {s.message && (
         <div className="tactical-toast" role="status">
@@ -478,7 +520,21 @@ export default function TacticalApp() {
 // Upcoming enemy waves and friendly arrivals slide towards «now» on the left.
 const SPAN = 60;
 function Timeline({ battle }: { battle: Battle }) {
-  const events = upcoming(battle).filter((e) => e.at <= SPAN);
+  // Events of the same kind a few seconds apart share one marker, so the
+  // track never stacks icons on top of each other.
+  const events = upcoming(battle)
+    .filter((e) => e.at <= SPAN)
+    .reduce<{ at: number; kind: "enemy" | "ally"; units: TroopType[] }[]>(
+      (list, e) => {
+        const near = list.find(
+          (g) => g.kind === e.kind && Math.abs(g.at - e.at) < SPAN * 0.12,
+        );
+        if (near) near.units = [...near.units, ...e.units];
+        else list.push({ at: e.at, kind: e.kind, units: [...e.units] });
+        return list;
+      },
+      [],
+    );
   const progress = waveProgress(battle);
   const land = held(battle),
     goal = battle.lesson ? missions[battle.lesson.index].goal : undefined,
@@ -519,9 +575,10 @@ function Timeline({ battle }: { battle: Battle }) {
             style={{ left: `${(e.at / SPAN) * 100}%` }}
             title={`${e.kind === "enemy" ? "Incursión" : "Refuerzo"} en ${Math.ceil(e.at)} s`}
           >
-            {e.units.map((u, k) => (
+            {e.units.slice(0, 4).map((u, k) => (
               <TroopIcon key={k} type={u} size={13} />
             ))}
+            {e.units.length > 4 && <em>+{e.units.length - 4}</em>}
           </div>
         ))}
       </div>
