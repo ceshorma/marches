@@ -106,6 +106,9 @@ test("pause stops time and movement", () => {
 test("opening raid visibly advances and loots if ignored", () => {
   const b = createBattle(true),
     start = b.raid!.troop.cell;
+  // Ignored: the squads stand far away, out of the archers' range too.
+  b.squads[0].cell = 18 + 1;
+  b.squads[1].cell = 2 * 18 + 1;
   run(b, 15);
   assert.notEqual(b.raid!.troop.cell, start);
   run(b, 45);

@@ -986,3 +986,73 @@ button:focus-visible {
   font-size: 12px;
   color: #6b766c;
 }
+
+/* The chronicle: news of the march at the bottom of the screen. */
+.chronicle {
+  position: absolute;
+  bottom: 30px;
+  left: 50%;
+  transform: translateX(-50%);
+  width: min(560px, calc(100vw - 360px));
+  text-align: center;
+  pointer-events: none;
+  font: italic 13px Georgia;
+  color: #5d6b63;
+}
+.chronicle.raised {
+  bottom: 112px;
+}
+.chronicle p {
+  margin: 4px 0 0;
+  text-shadow:
+    0 0 3px #f5f3ec,
+    0 0 6px #f5f3ec;
+  animation: chronicle-in 0.5s ease-out;
+}
+.chronicle p.old {
+  opacity: 0.45;
+  font-size: 11px;
+}
+.chronicle p.bad {
+  color: #aa5e50;
+}
+.chronicle p.good {
+  color: #3f6f4b;
+}
+.chronicle b {
+  font-style: normal;
+  color: #344750;
+}
+@keyframes chronicle-in {
+  from {
+    opacity: 0;
+    transform: translateY(6px);
+  }
+}
+.unit-title .pennant {
+  display: inline-block;
+  width: 11px;
+  height: 11px;
+  margin-right: 7px;
+  clip-path: polygon(0 0, 100% 50%, 0 100%);
+}
+.unit-title .veteran {
+  font-style: normal;
+  color: #c99a2e;
+  margin-left: 6px;
+  font-size: 14px;
+}
+@media (max-width: 700px) {
+  .chronicle {
+    left: 96px;
+    right: 16px;
+    width: auto;
+    transform: none;
+    text-align: left;
+    bottom: 76px;
+    font-size: 12px;
+  }
+  .chronicle.raised {
+    bottom: 150px;
+  }
+}

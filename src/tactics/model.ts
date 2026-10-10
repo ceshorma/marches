@@ -1,6 +1,8 @@
 import { attackDamage, slotsOf, zoneFrom, zoneSlots } from "./combat";
 import type { TroopType } from "./combat";
 import { advanceFronts } from "./fronts";
+import { news, troopName, veteran } from "./chronicle";
+import type { News } from "./chronicle";
 export const COLS = 18,
   ROWS = 12,
   R = 42,
@@ -37,6 +39,10 @@ export type Squad = {
   routing?: boolean;
   disengaging?: boolean;
   lastHit?: number;
+  // Raids this squad destroyed (see chronicle.ts: veterans).
+  feats?: number;
+  // When it was last struck by arrows from afar.
+  lastVolley?: number;
 };
 export type Raid = {
   target?: number;
@@ -63,6 +69,10 @@ export type Raid = {
   probe?: boolean;
   // A lone scout that comes very slowly while you have no squad yet.
   slow?: boolean;
+  // The squads that were fighting it when it was destroyed.
+  slayers?: string[];
+  // Destroyed by arrows alone.
+  shot?: boolean;
 };
 // A scripted mission: enemy waves and friendly arrivals on a shared clock.
 export type WaveSpec = {
@@ -169,6 +179,9 @@ export type Battle = {
     // The map template and where the clan's raids come in (free play).
     map?: string;
     entries?: number[];
+    // The chronicle: latest news, and how often each kind was told.
+    news?: News[];
+    newsCount?: Record<string, number>;
   };
   lesson?: {
     index: number;
@@ -179,6 +192,8 @@ export type Battle = {
     arrivals?: number;
     deployed?: boolean;
     noticeUntil?: number;
+    // When the last wave was over, for the time land gets to grow back.
+    clearAt?: number;
   };
   cells: Cell[];
   squads: Squad[];
@@ -208,6 +223,8 @@ export type Battle = {
     ty: number;
     time: number;
     enemy: boolean;
+    // Arrows from afar fly in a high arc.
+    volley?: boolean;
   }[];
 };
 // Height levels the attacker stands above its target.
@@ -339,6 +356,17 @@ export function blocked(b: Battle, id: number, squad: string) {
 export function route(b: Battle, s: Squad, end: number): number[] {
   const start = s.progress > 0 ? s.path[0] : s.cell;
   if (start === end || blocked(b, end, s.id)) return [];
+  return search(b, start, end, (id) => !blocked(b, id, s.id));
+}
+// The way the terrain allows, whoever stands on it: where a wave will march.
+export const trail = (b: Battle, start: number, end: number) =>
+  start === end ? [] : search(b, start, end, (id) => !solid(b.cells[id]));
+function search(
+  b: Battle,
+  start: number,
+  end: number,
+  open_: (id: number) => boolean,
+): number[] {
   const open = new Set([start]),
     cost = new Map([[start, 0]]),
     prev = new Map<number, number>();
@@ -354,7 +382,7 @@ export function route(b: Battle, s: Squad, end: number): number[] {
       return p;
     }
     for (const next of adjacent(n)) {
-      if (blocked(b, next, s.id)) continue;
+      if (next !== end && !open_(next)) continue;
       const a = b.cells[n],
         c = b.cells[next],
         v =
@@ -392,6 +420,15 @@ export function hold(s: Squad) {
   s.path = s.progress > 0 ? s.path.slice(0, 1) : [];
   s.hold = true;
 }
+// Seconds per cell on open, level ground: a squad marches at the pace of its
+// slowest member, so a pure cavalry squad is fast and a mixed one is not.
+export const PACE: Record<TroopType, number> = {
+  horse: 0.9,
+  bow: 1.3,
+  shield: 1.6,
+};
+export const pace = (s: Squad) =>
+  Math.max(...s.members.map((m) => PACE[m]), PACE.horse);
 export function advance(b: Battle, dt: number) {
   b.time += dt;
   if (b.fronts) advanceFronts(b, dt);
@@ -400,23 +437,37 @@ export function advance(b: Battle, dt: number) {
     let delta =
       ((s.targetFacing - s.facing + Math.PI * 3) % (Math.PI * 2)) - Math.PI;
     s.facing += Math.sign(delta) * Math.min(Math.abs(delta), dt * 2.5);
-    if (s.engaged && !s.disengaging && !s.routing) continue;
+    // Caught by a fight halfway between cells: step back to the cell it was
+    // leaving and fight from there, never from between two hexes.
+    if (s.engaged && !s.disengaging && !s.routing) {
+      settle(
+        b,
+        s,
+        dt / pace(s),
+        allTroops(b).find((o) => o.id === s.engaged),
+      );
+      continue;
+    }
     if (!s.path.length) continue;
     const next = s.path[0];
-    if (
-      allTroops(b).some(
-        (o) =>
-          o.id !== s.id &&
-          (o.cell === next || (o.progress > 0 && o.path[0] === next)),
-      )
-    ) {
-      if (!s.progress) {
-        const alternative = route(b, s, s.path.at(-1)!);
-        if (alternative.length) s.path = alternative;
-        // A broken squad with its way out blocked regroups where it stands,
-        // rather than waiting (and refusing orders) for ever.
-        else if (s.routing) s.path = [];
+    const blocker = allTroops(b).find(
+      (o) =>
+        o.id !== s.id &&
+        (o.cell === next || (o.progress > 0 && o.path[0] === next)),
+    );
+    if (blocker) {
+      // The way ahead is taken: back to the cell it was leaving.
+      if (s.progress) {
+        stepBack(s, dt / pace(s));
+        continue;
       }
+      const alternative = route(b, s, s.path.at(-1)!);
+      if (alternative.length) s.path = alternative;
+      // No way round: a broken squad regroups where it stands, and so does
+      // one whose way is held by troops standing still; it is free for
+      // orders again. One that is only passing by is waited for.
+      else if (s.routing || (!blocker.path.length && !blocker.progress))
+        s.path = [];
       continue;
     }
     const a = b.cells[s.cell],
@@ -424,7 +475,7 @@ export function advance(b: Battle, dt: number) {
     s.targetFacing = Math.atan2(c.y - a.y, c.x - a.x);
     s.progress +=
       dt /
-      (1.4 +
+      (pace(s) +
         (c.terrain === "forest" || c.terrain === "ford" ? 1 : 0) +
         Math.max(0, c.height - a.height) / 15);
     if (s.progress >= 1) {
@@ -438,6 +489,36 @@ export function advance(b: Battle, dt: number) {
       }
     }
   }
+}
+// Walks a troop back towards the cell it was leaving; true once it is there.
+function stepBack(s: Squad, amount: number) {
+  if (!s.progress) return true;
+  s.progress = Math.max(0, s.progress - amount);
+  return !s.progress;
+}
+// Caught by a fight halfway: the troop settles on whichever of its two cells
+// is nearer its foe (finishing the step or stepping back) and stops there.
+function settle(b: Battle, s: Squad, amount: number, foe?: Squad) {
+  if (!s.progress) {
+    s.path = [];
+    return;
+  }
+  const f = foe && squadPosition(b, foe),
+    from = b.cells[s.cell],
+    to = b.cells[s.path[0]],
+    forward = f
+      ? Math.hypot(to.x - f.x, to.y - f.y) <
+        Math.hypot(from.x - f.x, from.y - f.y)
+      : s.progress >= 0.5;
+  if (!forward) {
+    if (stepBack(s, amount)) s.path = [];
+    return;
+  }
+  s.progress = Math.min(1, s.progress + amount);
+  if (s.progress < 1) return;
+  s.cell = s.path[0];
+  s.path = [];
+  s.progress = 0;
 }
 export function squadPosition(b: Battle, s: Squad) {
   const a = b.cells[s.cell],
@@ -462,14 +543,26 @@ export function casualty(b: Battle, s: Squad): boolean {
     ...(b.fallen ?? []).filter((f) => b.time - f.time < FALLEN),
     { ...squadPosition(b, s), time: b.time, units: [lost], side: "ally" },
   ];
-  if (s.members.length) return false;
+  if (s.members.length) {
+    news(b, "broke", { s: s.name, t: troopName[lost] });
+    return false;
+  }
   b.squads = b.squads.filter((u) => u !== s);
+  news(b, "wiped", { s: s.name });
   return true;
 }
+// How far archers shoot: two cells, over whoever stands between.
+export const RANGE = DX * 2.2,
+  // A volley from afar hurts less than a melee.
+  VOLLEY = 0.75;
+const recentlyHit = (b: Battle, s: Squad) =>
+  s.lastHit !== undefined && b.time - s.lastHit < 2;
 // Base damage of each exchange: your squads, and the raiders. Raiders hit
 // hard enough that the wrong troop breaks and loses a member.
 export const DEFEND_HIT = 7,
-  RAID_HIT = 9;
+  RAID_HIT = 9,
+  // Veterans hit this much harder.
+  VETERAN_HIT = 1.15;
 // Seconds the remains of a destroyed raid stay on the field.
 export const FALLEN = 30;
 // Combat is resolved in timed exchanges; effects are emitted only by real attacks.
@@ -490,13 +583,29 @@ function stepRaid(b: Battle, r: Raid, dt: number) {
   const e = r.troop;
   e.cohesion ??= 100;
   e.cooldown = Math.max(0, (e.cooldown ?? 0) - dt);
+  const fighting = e.engaged;
   e.engaged = undefined;
   const at = squadPosition(b, e);
-  const defenders = b.squads.filter(
+  // A fight starts at arm's length; once joined it holds while both settle
+  // on their cells, a little further apart.
+  const defenders = b.squads.filter((s) => {
+    const p = squadPosition(b, s),
+      d = Math.hypot(p.x - at.x, p.y - at.y);
+    return !s.routing && (d < DX * 1.65 || (s.id === fighting && d < DX * 2.2));
+  });
+  const distance = (s: Squad) => {
+    const p = squadPosition(b, s);
+    return Math.hypot(p.x - at.x, p.y - at.y);
+  };
+  // Your archers standing within RANGE but out of the melee shoot over it.
+  const shooters = b.squads.filter(
     (s) =>
       !s.routing &&
-      Math.hypot(squadPosition(b, s).x - at.x, squadPosition(b, s).y - at.y) <
-        DX * 1.65,
+      !defenders.includes(s) &&
+      s.members.includes("bow") &&
+      !s.path.length &&
+      !s.progress &&
+      distance(s) < RANGE,
   );
   const hit = (
     source: Squad,
@@ -510,13 +619,63 @@ function stepRaid(b: Battle, r: Raid, dt: number) {
     target.cohesion = Math.max(
       0,
       (target.cohesion ?? 100) -
-        attackDamage(source, target, damage, rise(b, source, target), zone),
+        attackDamage(source, target, damage, rise(b, source, target), zone) *
+          (veteran(source) ? VETERAN_HIT : 1),
     );
     target.lastHit = b.time;
     target.lastZone = zone;
     b.strikes!.push({ x: p.x, y: p.y, tx: t.x, ty: t.y, time: b.time, enemy });
     source.cooldown = 1.35;
   };
+  // A volley: only the archers of a troop shoot, from their own slots.
+  const volley = (
+    source: Squad,
+    target: Squad,
+    damage: number,
+    enemy: boolean,
+  ) => {
+    const slots = slotsOf(source),
+      bows = source.members.flatMap((m, i) => (m === "bow" ? [i] : []));
+    hit(
+      {
+        ...source,
+        members: bows.map((i) => source.members[i]),
+        layout: bows.map((i) => slots[i]),
+      },
+      target,
+      damage * VOLLEY,
+      enemy,
+    );
+    source.cooldown = 1.35;
+    target.lastVolley = b.time;
+    b.strikes!.at(-1)!.volley = true;
+  };
+  // A broken squad loses a member and runs to regroup, away from the raid.
+  const rout = (s: Squad) => {
+    if (casualty(b, s)) return;
+    s.routing = true;
+    s.engaged = undefined;
+    s.disengaging = true;
+    const candidates = b.cells
+      .filter(
+        (c) =>
+          !blocked(b, c.id, s.id) &&
+          Math.hypot(c.x - at.x, c.y - at.y) > DX * 3,
+      )
+      .sort(
+        (a, c) =>
+          Math.hypot(a.x - b.cells[s.cell].x, a.y - b.cells[s.cell].y) -
+          Math.hypot(c.x - b.cells[s.cell].x, c.y - b.cells[s.cell].y),
+      );
+    for (const c of candidates) {
+      const p = route(b, s, c.id);
+      if (p.length) {
+        s.path = s.progress > 0 ? [s.path[0], ...p] : p;
+        break;
+      }
+    }
+  };
+  for (const s of shooters) if (!s.cooldown) volley(s, e, DEFEND_HIT, false);
   // Raiders do not run from a fight: broken, they are destroyed where they
   // stand. Only raiders who got their loot head home, and can be caught.
   const destroy = () => {
@@ -526,6 +685,9 @@ function stepRaid(b: Battle, r: Raid, dt: number) {
     }
     r.phase = "gone";
     r.fell = b.time;
+    r.slayers = [...defenders, ...shooters].map((s) => s.id);
+    // Broken by arrows alone, without a melee.
+    if (!defenders.length) r.shot = true;
     b.fallen = [
       ...(b.fallen ?? []).filter((f) => b.time - f.time < FALLEN),
       { ...at, time: b.time, units: [...e.members] },
@@ -566,34 +728,12 @@ function stepRaid(b: Battle, r: Raid, dt: number) {
       }
       if (!s.cooldown) hit(s, e, DEFEND_HIT, false);
     }
+    // Raiders caught halfway step back to their cell too.
+    settle(b, e, dt / 4.5, target);
     // Both sides fire in the same exchange, even if this breaks cohesion.
     if (!e.cooldown) hit(e, target, RAID_HIT, true);
-    for (const s of defenders)
-      if (s.cohesion! <= 0) {
-        // Breaking costs a member, from the side that was struck.
-        if (casualty(b, s)) continue;
-        s.routing = true;
-        s.engaged = undefined;
-        s.disengaging = true;
-        const candidates = b.cells
-          .filter(
-            (c) =>
-              !blocked(b, c.id, s.id) &&
-              Math.hypot(c.x - at.x, c.y - at.y) > DX * 3,
-          )
-          .sort(
-            (a, c) =>
-              Math.hypot(a.x - b.cells[s.cell].x, a.y - b.cells[s.cell].y) -
-              Math.hypot(c.x - b.cells[s.cell].x, c.y - b.cells[s.cell].y),
-          );
-        for (const c of candidates) {
-          const p = route(b, s, c.id);
-          if (p.length) {
-            s.path = s.progress > 0 ? [s.path[0], ...p] : p;
-            break;
-          }
-        }
-      }
+    // Breaking costs a member, from the side that was struck.
+    for (const s of defenders) if (s.cohesion! <= 0) rout(s);
   } else {
     if (r.phase === "fight")
       r.phase = r.guard
@@ -603,12 +743,25 @@ function stepRaid(b: Battle, r: Raid, dt: number) {
           : e.cell === (r.target ?? 8 * COLS + 14) && !e.path.length
             ? "loot"
             : "approach";
-    e.cohesion = Math.min(
-      r.strength ?? (b.outpost ? 30 : 100),
-      e.cohesion + dt * 2,
-    );
+    // Raiders with archers shoot at the nearest squad in range as they come.
+    const mark = e.members.includes("bow")
+      ? b.squads
+          .filter((s) => !s.routing && distance(s) < RANGE)
+          .sort((a, c) => distance(a) - distance(c))[0]
+      : undefined;
+    if (mark && !e.cooldown) {
+      volley(e, mark, RAID_HIT, true);
+      if (mark.cohesion! <= 0) rout(mark);
+    }
+    // Nobody rallies under fire.
+    if (!recentlyHit(b, e))
+      e.cohesion = Math.min(
+        r.strength ?? (b.outpost ? 30 : 100),
+        e.cohesion + dt * 2,
+      );
     for (const s of b.squads)
-      if (!s.routing) s.cohesion = Math.min(100, (s.cohesion ?? 100) + dt * 3);
+      if (!s.routing && !recentlyHit(b, s))
+        s.cohesion = Math.min(100, (s.cohesion ?? 100) + dt * 3);
   }
   r.pressure = 1 - e.cohesion / 100;
   if (e.cohesion <= 0) return destroy();
@@ -668,14 +821,17 @@ function stepRaid(b: Battle, r: Raid, dt: number) {
         (s.cell === next || (s.progress > 0 && s.path[0] === next)),
     )
   ) {
-    if (!e.progress)
-      e.path = route(
-        b,
-        e,
-        r.phase === "retreat"
-          ? (r.home ?? 3 * COLS + 17)
-          : (r.target ?? 8 * COLS + 14),
-      );
+    if (e.progress) {
+      stepBack(e, dt / 4.5);
+      return;
+    }
+    e.path = route(
+      b,
+      e,
+      r.phase === "retreat"
+        ? (r.home ?? 3 * COLS + 17)
+        : (r.target ?? 8 * COLS + 14),
+    );
     return;
   }
   const a = b.cells[e.cell],

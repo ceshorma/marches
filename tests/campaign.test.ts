@@ -80,6 +80,7 @@ for (const i of [1, 2, 3, 4, 5])
     run(b, 600);
     assert.equal(b.lesson!.status, "lost");
   });
+// Enemy archers shoot from two cells: lancers alone never reach them in time.
 test("the wrong troops lose: lancers alone fall to the archers of mission 3", () => {
   const b = createMission(2);
   run(b, 600, plain(["shield"]));

@@ -26,6 +26,20 @@ El clan domina terreno en hollín: el que rodea sus campamentos y el que sus inc
 - **Los bordes de casilla son reglas.** Solo se dibuja sobre un borde lo que hace algo: tu frontera, la del clan y, más adelante, las empalizadas. La decoración va dentro de las casillas.
 - **El color fuerte es lo que juegas.** Tu azul, el hollín y el rojo del clan, edificios y tropas. La naturaleza va apagada y clara, cerca del suelo.
 
+## Escuadrones con nombre
+
+Cada escuadrón nace con un nombre y un banderín de color (Halcón, Tortuga, Garza…; nunca el rojo del clan). Va al paso de su miembro más lento: la caballería pura es rápida y frágil ante los lanceros; uno mixto aguanta pero llega tarde. Destruir dos incursiones lo hace veterano (estrella, golpea un 15 % más): perderlo duele.
+
+**La crónica.** Lo que pasa llega abajo como noticias de la marcha: quién destruyó qué, quién se replegó, qué incursión sale y hacia dónde, y algo de vida cotidiana cuando no pasa nada. Varias líneas por suceso, por turnos, para que no se repita.
+
+**La oleada se anuncia.** Mientras se reúne en su campamento, una estela de hollín marca su camino y un anillo rojo su objetivo: no se ve quién ganará, sí dónde será el choque, y se puede preparar a quién lo recibe.
+
+## Alcance y altura
+
+Los arqueros disparan a dos casillas, por encima de quien tengan delante; solo disparan los arqueros del escuadrón, y una andanada hace un 75 % de lo que hace el cuerpo a cuerpo. Las incursiones con arqueros disparan mientras se acercan. Bajo fuego nadie se recupera.
+
+Al elegir destino se ve, antes de decidir, lo que alcanza el escuadrón desde allí y cómo queda el terreno hacia el camino del enemigo: ▲ si golpearía desde arriba, ▼ desde abajo. La crónica cierra el ciclo diciendo por qué se ganó: desde la loma, por el flanco, con flechas o con el rival adecuado.
+
 ## Dificultad ligada al territorio
 
 El nivel del ataque crece con la tierra que tienes: cuanta más frontera, más fuertes y más seguidas vienen las incursiones. Crecer da tropas y torres, pero también atrae al clan. En la campaña los niveles los fija cada misión; en el modo sin fin la fuerza de cada oleada se calcula de la tierra sostenida.

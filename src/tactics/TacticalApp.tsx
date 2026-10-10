@@ -1,3 +1,4 @@
+import { squadColor, veteran } from "./chronicle";
 import { missions, waveProgress } from "./campaign";
 import { TroopIcon } from "./icons";
 import { activeRaids } from "./model";
@@ -245,7 +246,20 @@ export default function TacticalApp() {
       {unit ? (
         <section className="orders" aria-label="Órdenes de escuadrón">
           <div className="unit-title">
-            <strong>{unit.name}</strong>
+            <strong>
+              {squadColor(unit.name) !== undefined && (
+                <i
+                  className="pennant"
+                  style={{ background: hexColor(squadColor(unit.name)!) }}
+                />
+              )}
+              {unit.name}
+              {veteran(unit) && (
+                <em className="veteran" title="Veterano">
+                  ★
+                </em>
+              )}
+            </strong>
             {(unit.engaged || unit.routing) && (
               <span className="cohesion-readout">
                 {unit.routing ? "Reagrupándose" : "Cohesión"} ·{" "}
@@ -553,6 +567,7 @@ export default function TacticalApp() {
           </section>
         </div>
       )}
+      {outpost && <Chronicle battle={s.battle} raised={!!unit} />}
       {s.message && (
         <div className="tactical-toast" role="status">
           {s.message}
@@ -562,6 +577,41 @@ export default function TacticalApp() {
   );
 }
 
+const hexColor = (c: number) => `#${c.toString(16).padStart(6, "0")}`;
+// The chronicle: the latest news of the march at the bottom of the screen.
+// The newest line is clear, the one before it fades; old news goes away.
+const NEWS_SHOWN = 14;
+function Chronicle({ battle, raised }: { battle: Battle; raised: boolean }) {
+  const lines = (battle.outpost?.news ?? [])
+    .filter((n) => battle.time - n.time < NEWS_SHOWN)
+    .slice(-2);
+  return (
+    <div
+      className={`chronicle ${raised ? "raised" : ""}`}
+      role="log"
+      aria-live="polite"
+    >
+      {lines.map((n, i) => {
+        const [before, after] = n.who ? n.text.split(n.who) : [n.text];
+        const color = n.who ? squadColor(n.who) : undefined;
+        return (
+          <p
+            key={`${n.time}-${n.text}`}
+            className={`${n.tone} ${i < lines.length - 1 ? "old" : ""}`}
+          >
+            {before}
+            {n.who && (
+              <b style={color !== undefined ? { color: hexColor(color) } : {}}>
+                {n.who}
+              </b>
+            )}
+            {after}
+          </p>
+        );
+      })}
+    </div>
+  );
+}
 // Upcoming enemy waves and friendly arrivals slide towards «now» on the left.
 const SPAN = 60;
 function Timeline({ battle }: { battle: Battle }) {

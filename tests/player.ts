@@ -56,9 +56,11 @@ export const plain =
         i >= posts.length && threatened !== undefined
           ? threatened
           : posts[i % posts.length];
-      // The camp must be stood on to be taken; other posts are held nearby.
+      // The camp must be stood on to be taken, and a site to be built;
+      // standing towers are held from nearby.
       if (u.cell === post) return;
-      if (post !== o.camp?.cell && adjacent(post).includes(u.cell)) return;
+      const standing = o.sites.some((s) => s.active && s.cell === post);
+      if (standing && adjacent(post).includes(u.cell)) return;
       if (order(b, u.id, post))
         for (const n of adjacent(post)) if (!order(b, u.id, n)) break;
     });

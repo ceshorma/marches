@@ -1,3 +1,4 @@
+import { nameSquad } from "./chronicle";
 import { createOutpost, held, launch, settleLand } from "./outpost";
 import { adjacent } from "./model";
 import type { Battle, WaveSpec } from "./model";
@@ -53,14 +54,15 @@ const none = { shield: 0, bow: 0, horse: 0 };
 const standing = (b: Battle) => b.outpost!.sites.filter((s) => s.active).length;
 const allResolved = (b: Battle) =>
   b.outpost!.resolved >= b.outpost!.script!.waves.length;
-// Land objective: hold the goal when the last wave is over; a sacked fort loses.
+// Land objective: reach the goal once the last wave is over (the land then
+// has RECOVER seconds to grow back, see updateMission); a sacked fort loses.
 const holdLand = (b: Battle): Status =>
   b.outpost!.fortSacked
     ? "lost"
-    : allResolved(b) && !b.raids?.length
-      ? held(b) >= missions[b.lesson!.index].goal!
-        ? "won"
-        : "lost"
+    : allResolved(b) &&
+        !b.raids?.length &&
+        held(b) >= missions[b.lesson!.index].goal!
+      ? "won"
       : "active";
 export const missions: MissionConfig[] = [
   {
@@ -158,7 +160,7 @@ export const missions: MissionConfig[] = [
   },
   {
     name: "La pinza",
-    objective: "DOMINA 36 CASILLAS",
+    objective: "DOMINA 32 CASILLAS",
     hint: "Atacan de dos en dos y desde lados opuestos. Reparte la defensa.",
     success: "La pinza no se cerró",
     failure: "No te quedó tierra suficiente",
@@ -182,7 +184,7 @@ export const missions: MissionConfig[] = [
       wave(125, S, [C, C, L]),
     ],
     map: { plain: [cell(7, 9), cell(7, 10), cell(7, 11)] },
-    goal: 36,
+    goal: 32,
     check: holdLand,
   },
   {
@@ -285,7 +287,7 @@ export function createMission(index: number): Battle {
     b.cells[s.cell].terrain = "plain";
     b.squads.push({
       id: `p${o.serial}`,
-      name: `Escuadrón ${o.serial}`,
+      name: nameSquad(b),
       cell: s.cell,
       facing: 0,
       targetFacing: 0,
@@ -328,9 +330,15 @@ export function updateMission(b: Battle) {
   if (!lesson || lesson.status !== "active" || !b.outpost) return;
   lesson.status = missions[lesson.index].check(b);
   // Every wave over and the objective still unmet: no endless stalemate.
-  if (lesson.status === "active" && allResolved(b) && !b.raids?.length)
-    lesson.status = "lost";
+  // The land eaten in the last fight gets RECOVER seconds to grow back.
+  if (lesson.status !== "active" || !allResolved(b) || b.raids?.length) {
+    lesson.clearAt = undefined;
+    return;
+  }
+  lesson.clearAt ??= b.time;
+  if (b.time - lesson.clearAt >= RECOVER) lesson.status = "lost";
 }
+export const RECOVER = 10;
 // Raids resolved / total, for the progress readout.
 export function waveProgress(b: Battle) {
   const sc = b.outpost?.script;

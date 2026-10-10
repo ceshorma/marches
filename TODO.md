@@ -8,7 +8,10 @@
 - [ ] Tomar los campamentos del Clan del Humo en todas las misiones (hoy solo en la 6, con guarnición): sostener uno junto a una torre lo toma, arde y pasa a ser tierra propia; ese lado deja de mandar oleadas.
 - [ ] Probar con personas el nuevo balance (bajas, golpe de las incursiones 9, cosecha más lenta, misión 6 con guarnición): está ajustado con `scripts/sim.ts`, no jugando.
 - [ ] Vista previa al arrastrar una tropa sobre un escuadrón (mismas insignias del choque, sin veredicto).
-- [ ] Marca de veterano para el escuadrón que destruye una incursión sin quebrarse.
+- [x] Marca de veterano: el escuadrón que destruye dos incursiones lleva una estrella y golpea un 15 % más.
+- [ ] Más líneas para la crónica (hoy 2–6 por suceso) y sucesos nuevos: la tierra del clan crece, un escuadrón toma altura, un veterano cae.
+- [ ] ¿Las incursiones también al paso de su miembro más lento? (hoy todas a 4,5 s por casilla).
+- [ ] Objetivos variados por mapa (sostener el paso, que no crucen el vado, proteger una aldea en cada valle, tomar la meseta).
 
 ## Assets pendientes
 

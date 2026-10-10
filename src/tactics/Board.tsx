@@ -17,6 +17,7 @@ import {
 import type { Item } from "./outpost";
 import { clash, guide, reasons } from "./guide";
 import { setSnapshot } from "./report";
+import { squadColor, veteran } from "./chronicle";
 import type { Tone } from "./guide";
 import { useEffect, useRef } from "react";
 import { Application, Container, Graphics, Text } from "pixi.js";
@@ -25,6 +26,8 @@ import {
   R,
   DX,
   route,
+  trail,
+  RANGE,
   squadPosition,
   adjacent,
   allTroops,
@@ -184,6 +187,33 @@ function token(
     icon(g, s.members[i], px, py, 12, CREAM, alpha);
   }
 }
+// Each squad of yours carries its own pennant, in its colour; a veteran
+// squad wears a star above it.
+function pennant(g: Graphics, s: Squad, x: number, y: number) {
+  const color = squadColor(s.name);
+  if (color === undefined) return;
+  const px = x + 19,
+    top = y - 44;
+  g.moveTo(px, y - 22)
+    .lineTo(px, top)
+    .stroke({ color: INK, width: 1.6, alpha: 0.8 });
+  g.poly([px, top, px + 15, top + 5, px, top + 10])
+    .fill(color)
+    .stroke({ color: CREAM, width: 1.2 });
+  if (veteran(s)) {
+    const cx = px - 9,
+      cy = top + 3;
+    g.poly(
+      Array.from({ length: 10 }, (_, i) => {
+        const a = -Math.PI / 2 + (i * Math.PI) / 5,
+          r = i % 2 ? 2.6 : 6;
+        return [cx + Math.cos(a) * r, cy + Math.sin(a) * r];
+      }).flat(),
+    )
+      .fill(0xe0b23c)
+      .stroke({ color: INK, width: 1, alpha: 0.6 });
+  }
+}
 export default function Board() {
   const ref = useRef<HTMLDivElement>(null);
 
@@ -215,6 +245,62 @@ export default function Board() {
       app.stage.addChild(world, hud);
       world.addChild(base, overlay);
       const b = useTactics.getState().battle;
+      // Wave trails (camp → target), worked out once per pair.
+      const trails = new Map<string, number[]>();
+      // Where the enemy is or will march: raids, their paths and the trails
+      // of gathering waves.
+      const enemyWay = () => {
+        const cells = new Set<number>();
+        for (const r of activeRaids(b)) {
+          if (r.phase === "retreat") continue;
+          cells.add(r.troop.cell);
+          for (const id of r.troop.path) cells.add(id);
+        }
+        for (const g of gathering(b)) {
+          if (g.target === undefined) continue;
+          const key = `${g.from}>${g.target}`;
+          if (!trails.has(key)) trails.set(key, trail(b, g.from, g.target));
+          for (const id of trails.get(key)!) cells.add(id);
+        }
+        return cells;
+      };
+      // A selected squad's reach from a cell: archers light the cells they
+      // can shoot (two away); on the enemy's way within reach, ▲ says you
+      // would strike from above, ▼ from below.
+      const reachMarks = (u: Squad, origin: number) => {
+        const o = b.cells[origin],
+          bows = u.members.includes("bow"),
+          reach = bows ? RANGE : DX * 1.65;
+        if (bows)
+          for (const c of b.cells) {
+            const d = Math.hypot(c.x - o.x, c.y - o.y);
+            if (d < DX * 1.65 || d >= RANGE) continue;
+            overlay
+              .poly(hex(c.x, c.y, R - 9))
+              .stroke({ color: BLUE, width: 1.2, alpha: 0.4 });
+          }
+        for (const id of enemyWay()) {
+          const c = b.cells[id];
+          if (id === origin || Math.hypot(c.x - o.x, c.y - o.y) >= reach)
+            continue;
+          const up = o.height - c.height,
+            x = c.x,
+            y = c.y - R * 0.5;
+          if (!up) {
+            overlay.circle(x, y, 4).fill({ color: BLUE, alpha: 0.6 });
+            continue;
+          }
+          const color = up > 0 ? GOOD : ENEMY,
+            k = up > 0 ? 1 : -1;
+          overlay
+            .circle(x, y, 9)
+            .fill({ color: CREAM, alpha: 0.9 })
+            .stroke({ color, width: 1.5 });
+          overlay
+            .poly([x - 5, y + 3.5 * k, x, y - 4.5 * k, x + 5, y + 3.5 * k])
+            .fill(color);
+        }
+      };
       const flashOf = (u: Squad) =>
         u.lastHit === undefined
           ? 0
@@ -1484,9 +1570,22 @@ export default function Board() {
             dy = hit.ty - hit.y,
             len = Math.hypot(dx, dy) || 1,
             color = hit.enemy ? ENEMY : BLUE;
-          const x = hit.x + dx * t,
-            y = hit.y + dy * t - Math.sin(t * Math.PI) * 14;
-          if (t < 1)
+          const arc = hit.volley ? 46 : 14,
+            x = hit.x + dx * t,
+            y = hit.y + dy * t - Math.sin(t * Math.PI) * arc;
+          if (t < 1 && hit.volley) {
+            // A volley: three arrows in a high arc, pointing along their flight.
+            const vy = dy - Math.cos(t * Math.PI) * Math.PI * arc,
+              vl = Math.hypot(dx, vy) || 1;
+            for (const k of [-1, 0, 1]) {
+              const ox = x + k * 7 * (-vy / vl),
+                oy = y + k * 7 * (dx / vl);
+              overlay
+                .moveTo(ox - (dx / vl) * 10, oy - (vy / vl) * 10)
+                .lineTo(ox, oy)
+                .stroke({ color, width: 1.8, cap: "round" });
+            }
+          } else if (t < 1)
             overlay
               .moveTo(x - (dx / len) * 12, y - (dy / len) * 12)
               .lineTo(x, y)
@@ -1547,6 +1646,13 @@ export default function Board() {
             if (valid)
               token(overlay, selected, c.x, c.y, selected.targetFacing, 0.2);
           }
+          // From where it stands (or would stand): what it reaches, and how
+          // the ground lies towards the enemy's way within that reach.
+          const origin =
+            hover >= 0 && route(b, selected, hover).length
+              ? hover
+              : (selected.path.at(-1) ?? selected.cell);
+          reachMarks(selected, origin);
         }
         for (const u of b.squads) {
           const p = squadPosition(b, u);
@@ -1561,6 +1667,7 @@ export default function Board() {
               .stroke({ color: BLUE, width: 2, alpha: 0.55 * (1 - age / 650) });
 
           token(overlay, u, p.x, p.y, u.facing, 1, BLUE, flashOf(u));
+          pennant(overlay, u, p.x, p.y);
           morale(u, p.x, p.y);
         }
         // Building, above the squads so it reads: an empty site shows the
@@ -1726,6 +1833,39 @@ export default function Board() {
             icon(overlay, arrival.type, x, y, 11 * g, CREAM);
           }
           const forming = gathering(b);
+          // Where each gathering wave will march: a trail of soot dots from
+          // its camp to its target, darker as it is about to set out.
+          for (const g of forming) {
+            if (g.target === undefined) continue;
+            const key = `${g.from}>${g.target}`;
+            if (!trails.has(key)) trails.set(key, trail(b, g.from, g.target));
+            const path = [g.from, ...trails.get(key)!],
+              strength = 0.25 + 0.5 * g.progress;
+            path.forEach((id, i) => {
+              if (i === 0 || i === path.length - 1) return;
+              const c = b.cells[id],
+                n = b.cells[path[i + 1]];
+              for (const t of [0, 0.5])
+                overlay
+                  .circle(c.x + (n.x - c.x) * t, c.y + (n.y - c.y) * t, 3)
+                  .fill({ color: CLAN, alpha: strength });
+            });
+            const t = b.cells[g.target];
+            for (let k = 0; k < 8; k++) {
+              const a = (k * Math.PI) / 4;
+              overlay
+                .moveTo(
+                  t.x + Math.cos(a) * (R - 6),
+                  t.y + Math.sin(a) * (R - 6),
+                )
+                .arc(t.x, t.y, R - 6, a, a + 0.45)
+                .stroke({
+                  color: ENEMY,
+                  width: 3,
+                  alpha: strength + beat * 0.15,
+                });
+            }
+          }
           for (const g of forming) {
             const c = b.cells[g.from],
               shown = Math.max(1, Math.ceil(g.progress * g.units.length));

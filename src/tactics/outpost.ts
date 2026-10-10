@@ -1,8 +1,26 @@
-import { troopNames } from "./combat";
+import { heightBonus, matchup, troopNames, zoneFrom } from "./combat";
+import {
+  enemyNames,
+  nameSquad,
+  news,
+  quietNews,
+  troopName,
+  VETERAN,
+} from "./chronicle";
+import type { NewsEvent } from "./chronicle";
 import { applyMap, maps } from "./maps";
 import type { MapName } from "./maps";
 import type { TroopType } from "./combat";
-import { createBattle, adjacent, blocked, route, DX, solid } from "./model";
+import {
+  createBattle,
+  adjacent,
+  blocked,
+  route,
+  DX,
+  rise,
+  solid,
+  squadPosition,
+} from "./model";
 import type { Battle, Raid, Squad, WaveSpec } from "./model";
 const cell = (q: number, r: number) => r * 18 + q;
 export const EAST = cell(16, 8);
@@ -113,7 +131,7 @@ export function addReserveTroop(
     o.serial++;
     unit = {
       id: `p${o.serial}`,
-      name: `Escuadrón ${o.serial}`,
+      name: nameSquad(b),
       cell: id,
       facing: 0,
       targetFacing: 0,
@@ -124,7 +142,8 @@ export function addReserveTroop(
       cohesion: 100,
     };
     b.squads.push(unit);
-  }
+    news(b, "formed", { s: unit.name });
+  } else news(b, "joined", { s: unit.name, t: troopName[type] });
   unit.members.push(type);
   o.reserve[type]--;
   if (id !== o.fort && !adjacent(o.fort).includes(id)) o.towerDeploys++;
@@ -237,6 +256,11 @@ export function launch(
     ...(spec.probe ? { probe: true } : {}),
   };
   b.raids = [...(b.raids ?? []), raid];
+  if (!guard && !spec.probe)
+    news(b, "raid", {
+      e: enemyNames[spoilsOf(spec.units)],
+      g: spec.target === o.fort ? "el cuartel" : "una torre",
+    });
   if (guard) {
     o.waves++;
     return true;
@@ -253,6 +277,12 @@ export function launch(
   o.waves++;
   return true;
 }
+// Free play aims at your towers in turn, or the fort while none stand.
+const freeTarget = (b: Battle) => {
+  const o = b.outpost!,
+    towers = o.sites.filter((s) => s.active);
+  return towers.length ? towers[o.waves % towers.length].cell : o.fort;
+};
 // Free play: raids come in from each entry in turn.
 const nextEntry = (o: Outpost) => {
   const entries = o.entries?.length ? o.entries : [EAST];
@@ -292,6 +322,7 @@ function arrive(b: Battle, type: TroopType, from?: number) {
   o.arrivals++;
   if (waiting(o) >= FORT_CAP) {
     o.turnedAway++;
+    news(b, "turnedAway", { t: troopName[type] });
     notify(o, `${troopNames[type]} se retira`, o.fort, "danger", b.time + 3);
     return;
   }
@@ -314,7 +345,20 @@ function arrive(b: Battle, type: TroopType, from?: number) {
       from ??
       (home.length ? home[o.arrivals % Math.min(3, home.length)] : undefined),
   };
+  news(b, from === undefined ? "arrival" : "spoils", { t: troopName[type] });
   notify(o, `+1 ${troopNames[type].toLowerCase()}`, o.fort, "good", b.time + 4);
+}
+// Why a raid fell to this squad, for the chronicle: arrows from afar, the
+// high ground, a blow on the flank, the troop that beats them, or none.
+function victory(b: Battle, s: Squad, r: Raid): NewsEvent {
+  const e = r.troop;
+  if (r.shot) return "arrows";
+  const p = squadPosition(b, s),
+    q = squadPosition(b, e);
+  if (heightBonus(s.members, rise(b, s, e)) > 1.05) return "fromAbove";
+  if (zoneFrom(e.facing, p, q) !== "front") return "flank";
+  if (matchup(s.members, e.members) > 1.1) return "rival";
+  return "destroyed";
 }
 export const spoilsOf = (units: TroopType[]) =>
   (["shield", "bow", "horse"] as const)
@@ -339,6 +383,7 @@ export function gathering(b: Battle) {
     .map((e) => ({
       from: e.from!,
       units: e.units,
+      target: e.target,
       progress: 1 - e.at / GATHER,
     }));
 }
@@ -380,6 +425,8 @@ export type Upcoming = {
   kind: "enemy" | "ally";
   units: TroopType[];
   from?: number;
+  // Where an enemy wave will march, as things stand.
+  target?: number;
 };
 // Known future events, in seconds from now, for the timeline.
 export function upcoming(b: Battle): Upcoming[] {
@@ -391,11 +438,12 @@ export function upcoming(b: Battle): Upcoming[] {
     if (start === null) return [];
     const now = b.time - start;
     return [
-      ...sc.waves.slice(sc.spawned).map((w) => ({
+      ...sc.waves.slice(sc.spawned).map((w, i) => ({
         at: Math.max(0, w.at - now),
         kind: "enemy" as const,
         units: w.units,
         from: w.from,
+        target: aim(b, w.target, sc.spawned + i),
       })),
       ...sc.arrivals.slice(sc.delivered).map((a) => ({
         at: Math.max(0, a.at - now),
@@ -415,6 +463,7 @@ export function upcoming(b: Battle): Upcoming[] {
           (o.raids.retry ? o.repelled : o.waves) % o.raids.waves.length
         ],
       from: nextEntry(o),
+      target: freeTarget(b),
     });
   const harvest = nextHarvest(b);
   if (harvest) events.push(harvest);
@@ -438,6 +487,7 @@ export function updateOutpost(b: Battle, dt: number) {
         // The tower's own ground is held from the moment it stands.
         if (o.land) o.land[site.cell] = 1;
         notify(o, "Torre en pie", site.cell, "good", b.time + 4);
+        news(b, "tower", { s: builder.name });
         if (!o.script) {
           if (!Number.isFinite(o.nextRaid) && o.repelled < o.raids.limit)
             o.nextRaid = b.time + o.raids.firstDelay;
@@ -470,12 +520,25 @@ export function updateOutpost(b: Battle, dt: number) {
   for (const r of b.raids) {
     if (r.fell === undefined || r.spoils) continue;
     r.spoils = true;
+    // Who destroyed it gets the credit; a second raid makes them veterans.
+    const slayers = b.squads.filter((u) => r.slayers?.includes(u.id));
+    const best = slayers[0];
+    if (best && !r.slow)
+      news(b, victory(b, best, r), {
+        s: best.name,
+        e: enemyNames[spoilsOf(r.troop.members)],
+      });
+    for (const u of slayers) {
+      u.feats = (u.feats ?? 0) + 1;
+      if (u.feats === VETERAN) news(b, "veteran", { s: u.name });
+    }
     arrive(b, spoilsOf(r.troop.members), r.troop.cell);
   }
   b.raids = b.raids.filter((r) => r.phase !== "gone");
   updateLand(b, dt);
   updateTracks(b, dt);
   updateScouts(b);
+  quietNews(b);
   if (o.camp && !o.camp.taken) updateCamp(b, o.camp, dt);
   if (o.script) {
     if (!o.camp?.taken) runScript(b);
@@ -490,7 +553,6 @@ export function updateOutpost(b: Battle, dt: number) {
     o.repelled < o.raids.limit &&
     !o.camp?.taken
   ) {
-    const towers = o.sites.filter((s) => s.active);
     if (
       launch(b, {
         from: nextEntry(o),
@@ -499,7 +561,7 @@ export function updateOutpost(b: Battle, dt: number) {
             (o.raids.retry ? o.repelled : o.waves) % o.raids.waves.length
           ],
         strength: o.raids.strength,
-        target: towers.length ? towers[o.waves % towers.length].cell : o.fort,
+        target: freeTarget(b),
       })
     )
       o.nextRaid = b.time + o.raids.interval;
@@ -537,6 +599,7 @@ function updateScouts(b: Battle) {
     })
   ) {
     b.raids!.at(-1)!.slow = true;
+    news(b, "scout");
     o.nextScout = b.time + SCOUT_EVERY;
   }
 }
@@ -588,6 +651,7 @@ function updateCamp(b: Battle, camp: NonNullable<Outpost["camp"]>, dt: number) {
     o.nextRaid = Infinity;
     for (const r of b.raids ?? []) if (r.phase === "retreat") r.phase = "gone";
     notify(o, "Campamento tomado", camp.cell, "good", b.time + 5);
+    news(b, "camp");
   }
 }
 
@@ -781,6 +845,7 @@ function updateLand(b: Battle, dt: number) {
       s.builtAt = null;
       o.lostTowers++;
       notify(o, "Torre caída", s.cell, "danger", b.time + 6);
+      news(b, "towerLost");
     }
   // Held land yields troops at the fort.
   o.harvest = (o.harvest ?? 0) + yieldRate(b) * dt;
