@@ -3,6 +3,7 @@ import {
   createScout,
   updateOutpost,
   addReserveTroop,
+  moveMember,
 } from "./outpost";
 import {
   createMission,
@@ -14,26 +15,25 @@ import {
 import type { TroopType } from "./combat";
 import { createFrontsBattle, spawnReinforcement } from "./fronts";
 import { create } from "zustand";
-import { createBattle, advance, order, hold } from "./model";
+import { createBattle, advance, order } from "./model";
 import type { Battle } from "./model";
 type State = {
   battle: Battle;
   revision: number;
   selected: string | null;
   deployCell: number | null;
-  placeTroop: (type: TroopType) => void;
+  placeTroop: (type: TroopType, slot?: number) => void;
+  arrange: (squad: string, from: number, to: number) => void;
+  dropTroop: (cell: number, type: TroopType, slot?: number) => void;
   selectedBase: "ally" | "enemy" | null;
   deploy: (type?: TroopType) => void;
   paused: boolean;
   speed: number;
   zoom: number;
   focus: number;
-  orienting: boolean;
   message: string | null;
   select: (id: string | null) => void;
   move: (cell: number) => void;
-  rotate: (angle: number) => void;
-  stop: () => void;
   tick: (dt: number) => void;
 
   reset: () => void;
@@ -43,12 +43,16 @@ type State = {
   startMission: (index: number) => void;
   nextMission: () => void;
   switchScenario: () => void;
+  openCampaign: () => void;
 };
+const progress = readProgress(),
+  finished = progress >= missions.length,
+  firstMission = Math.min(progress, missions.length - 1);
 export const useTactics = create<State>((set, get) => ({
-  battle: createOutpost(),
-  scenario: "outpost",
-  missionIndex: readProgress(),
-  unlocked: readProgress(),
+  battle: finished ? createOutpost() : createMission(firstMission),
+  scenario: finished ? "outpost" : "campaign",
+  missionIndex: firstMission,
+  unlocked: progress,
   startMission: (index) => {
     if (index < 0 || index > get().unlocked || index >= missions.length) return;
     set({ scenario: "campaign", missionIndex: index });
@@ -60,7 +64,7 @@ export const useTactics = create<State>((set, get) => ({
     if (s.missionIndex < missions.length - 1)
       s.startMission(s.missionIndex + 1);
     else {
-      set({ scenario: "fronts" });
+      set({ scenario: "outpost" });
       get().reset();
     }
   },
@@ -72,25 +76,46 @@ export const useTactics = create<State>((set, get) => ({
   speed: 1,
   zoom: 1,
   focus: 0,
-  orienting: false,
   message: null,
   select: (selected) =>
     set({
       selected,
       deployCell: null,
       selectedBase: null,
-      orienting: false,
       message: null,
     }),
-  placeTroop: (type) => {
+  dropTroop: (cell, type, slot) => {
+    const s = get(),
+      message = addReserveTroop(s.battle, cell, type, slot);
+    set({
+      message,
+      deployCell: null,
+      revision: s.revision + 1,
+      ...(!message
+        ? { selected: s.battle.squads.find((u) => u.cell === cell)!.id }
+        : {}),
+    });
+  },
+  arrange: (id, from, to) => {
+    const s = get(),
+      u = s.battle.squads.find((u) => u.id === id);
+    if (!u) return;
+    set({ message: moveMember(u, from, to), revision: s.revision + 1 });
+  },
+  placeTroop: (type, slot) => {
     const s = get();
     if (s.deployCell === null) return;
-    const message = addReserveTroop(s.battle, s.deployCell, type);
+    const message = addReserveTroop(s.battle, s.deployCell, type, slot);
+    const left = Object.values(s.battle.outpost!.reserve).some((n) => n > 0);
     set({
       message,
       revision: s.revision + 1,
       ...(!message
-        ? { selected: s.battle.squads.find((u) => u.cell === s.deployCell)!.id }
+        ? {
+            selected: s.battle.squads.find((u) => u.cell === s.deployCell)!.id,
+            // Nothing more to add: close the tray so the map can guide again.
+            ...(left ? {} : { deployCell: null }),
+          }
         : {}),
     });
   },
@@ -113,24 +138,6 @@ export const useTactics = create<State>((set, get) => ({
         revision: s.revision + 1,
       });
   },
-  rotate: (angle) => {
-    const s = get(),
-      u = s.battle.squads.find((u) => u.id === s.selected);
-    if (u && !u.routing) {
-      hold(u);
-      if (u.progress > 0) u.pendingFacing = angle;
-      else u.targetFacing = angle;
-      set({ orienting: false, revision: s.revision + 1 });
-    }
-  },
-  stop: () => {
-    const s = get(),
-      u = s.battle.squads.find((u) => u.id === s.selected);
-    if (u && !u.routing) {
-      hold(u);
-      set({ revision: s.revision + 1 });
-    }
-  },
   tick: (dt) => {
     const s = get();
     if (
@@ -138,10 +145,10 @@ export const useTactics = create<State>((set, get) => ({
       (!s.battle.lesson || s.battle.lesson.status === "active")
     ) {
       advance(s.battle, dt);
-      updateMission(s.battle, dt);
+      updateMission(s.battle);
       updateOutpost(s.battle, dt);
       if (s.battle.lesson?.status === "won") {
-        const unlocked = Math.max(s.unlocked, Math.min(4, s.missionIndex + 1));
+        const unlocked = Math.max(s.unlocked, s.missionIndex + 1);
         saveProgress(unlocked);
         set({ unlocked, paused: true, selected: null, selectedBase: null });
       }
@@ -153,6 +160,13 @@ export const useTactics = create<State>((set, get) => ({
   switchScenario: () => {
     const scenario = get().scenario === "fronts" ? "outpost" : "fronts";
     set({ scenario });
+    get().reset();
+  },
+  openCampaign: () => {
+    set({
+      scenario: "campaign",
+      missionIndex: Math.min(get().unlocked, missions.length - 1),
+    });
     get().reset();
   },
   reset: () =>
@@ -172,7 +186,6 @@ export const useTactics = create<State>((set, get) => ({
       speed: 1,
       zoom: 1,
       focus: get().focus + 1,
-      orienting: false,
       message: null,
       revision: 0,
     }),

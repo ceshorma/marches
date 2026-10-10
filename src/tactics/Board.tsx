@@ -1,9 +1,31 @@
-import { troopTypes, troopNames } from "./combat";
-import { outpostInfluence, deploymentError } from "./outpost";
-import { useEffect, useRef } from "react";
+import { matchup, slotsOf, troopTypes, troopNames, zoneSlots } from "./combat";
+import type { TroopType } from "./combat";
+import { iconPaths, TroopIcon } from "./icons";
+import { FormationGrid } from "./Formation";
+import {
+  deploymentError,
+  FORT_CAP,
+  HOLD,
+  eaten,
+  gathering,
+  queue,
+  upcoming,
+  waiting as waitingCount,
+} from "./outpost";
+import { guide } from "./guide";
+import type { Tone } from "./guide";
+import { useEffect, useRef, useState } from "react";
 import { Application, Container, Graphics, Text } from "pixi.js";
 import { useTactics } from "./state";
-import { R, DX, route, squadPosition, adjacent } from "./model";
+import {
+  R,
+  DX,
+  route,
+  squadPosition,
+  adjacent,
+  allTroops,
+  activeRaids,
+} from "./model";
 import type { Squad } from "./model";
 const BLUE = 0x326f97,
   INK = 0x344750;
@@ -33,7 +55,62 @@ function text(
   t.position.set(x, y);
   parent.addChild(t);
 }
-function soldiers(
+const ENEMY = 0xb4544b,
+  CREAM = 0xf4f0e3;
+// Icon paths (M, L, Q, Z) parsed once and drawn upright at any position.
+type Cmd = [string, ...number[]];
+const parsed = Object.fromEntries(
+  Object.entries(iconPaths).map(([type, paths]) => [
+    type,
+    paths.map((p) => ({
+      fill: !!p.fill,
+      cmds: (p.d.match(/[MLQZ][^MLQZ]*/g) ?? []).map(
+        (part) =>
+          [
+            part[0],
+            ...part
+              .slice(1)
+              .trim()
+              .split(/[\s,]+/)
+              .filter(Boolean)
+              .map(Number),
+          ] as Cmd,
+      ),
+    })),
+  ]),
+) as Record<TroopType, { fill: boolean; cmds: Cmd[] }[]>;
+function icon(
+  g: Graphics,
+  type: TroopType,
+  x: number,
+  y: number,
+  size: number,
+  color: number,
+  alpha = 1,
+) {
+  const k = size / 20,
+    px = (v: number) => x + (v - 10) * k,
+    py = (v: number) => y + (v - 10) * k;
+  for (const path of parsed[type]) {
+    for (const [c, ...n] of path.cmds) {
+      if (c === "M") g.moveTo(px(n[0]), py(n[1]));
+      else if (c === "L") g.lineTo(px(n[0]), py(n[1]));
+      else if (c === "Q")
+        g.quadraticCurveTo(px(n[0]), py(n[1]), px(n[2]), py(n[3]));
+      else g.closePath();
+    }
+    if (path.fill) g.fill({ color, alpha });
+    else g.stroke({ color, width: 1.6 * Math.max(1, k), alpha, cap: "round" });
+  }
+}
+// Formation position of a slot, in the squad's frame (x towards the front).
+export const slotOffset = (slot: number) => ({
+  a: slot < 3 ? 8.5 : -8.5,
+  b: ((slot % 3) - 1) * 15,
+});
+// A squad is a small block of six slots in formation, turned to its facing:
+// side colour, one icon per member, facing notch and cohesion ring.
+function token(
   g: Graphics,
   s: Squad,
   x: number,
@@ -41,6 +118,7 @@ function soldiers(
   angle: number,
   alpha = 1,
   color = BLUE,
+  flash = 0,
 ) {
   const c = Math.cos(angle),
     d = Math.sin(angle);
@@ -48,86 +126,67 @@ function soldiers(
     x + a * c - b * d,
     y + a * d + b * c,
   ];
-  s.members.forEach((m, i) => {
-    const disorder = Math.max(0, 1 - (s.cohesion ?? 100) / 60);
-    const [px, py] =
-      s.members.length === 1
-        ? [x, y]
-        : point(
-            (i < 3 ? 10 : -10) + Math.sin(i * 7) * disorder * 6,
-            ((i % 3) - 1) * 16 + Math.cos(i * 4) * disorder * 5,
-          );
-    if (m === "horse") {
-      const foot = (a: number, b: number) => [
-        px + a * c - b * d,
-        py + a * d + b * c,
-      ];
-      const points = [
-        [-10, -5],
-        [5, -5],
-        [9, -3],
-        [12, -3],
-        [12, 3],
-        [7, 5],
-        [-8, 5],
-      ]
-        .map(([a, b]) => foot(a, b))
-        .flat();
-      g.poly(points).fill({ color: 0x76654f, alpha });
-      for (const a of [-6, 5]) {
-        const [x1, y1] = foot(a, -7),
-          [x2, y2] = foot(a, 7);
-        g.moveTo(x1, y1)
-          .lineTo(x2, y2)
-          .stroke({ color: 0x50493c, width: 2, alpha });
-      }
-      g.circle(px, py, 4.7).fill({ color, alpha });
-      g.circle(px + c, py + d, 2.5).fill({ color: 0xd2d1bd, alpha });
-      const [x1, y1] = foot(-4, -4),
-        [x2, y2] = foot(15, -4);
-      g.moveTo(x1, y1).lineTo(x2, y2).stroke({ color: INK, width: 1, alpha });
-      return;
-    }
-    g.ellipse(px + 1, py + 3, 7, 5).fill({
-      color: 0x344750,
-      alpha: 0.13 * alpha,
-    });
-    g.circle(px, py, 6).fill({ color, alpha });
-    const [hx, hy] = [px + 2 * c, py + 2 * d];
-    g.circle(hx, hy, 3).fill({ color: 0xc6c9bd, alpha });
-    if (m === "shield") {
-      const [sx, sy] = [px + 7 * c, py + 7 * d];
-      g.circle(sx, sy, 4)
-        .fill({ color, alpha })
-        .stroke({ color: 0xdfdfca, width: 1, alpha });
-      const [a, b] = [px - 3 * d, py + 3 * c];
-      g.moveTo(a - 9 * c, b - 9 * d)
-        .lineTo(a + 12 * c, b + 12 * d)
-        .stroke({ color: 0x695a43, width: 1.4, alpha });
-      g.circle(a + 12 * c, b + 12 * d, 1.5).fill({ color: INK, alpha });
-    } else {
-      const [a, b] = [px + 8 * c, py + 8 * d];
-      g.moveTo(a - 7 * d, b + 7 * c)
-        .quadraticCurveTo(a + 9 * c, b + 9 * d, a + 7 * d, b - 7 * c)
-        .stroke({ color: 0x806347, width: 1.6, alpha });
-      g.moveTo(a - 7 * d, b + 7 * c)
-        .lineTo(a + 7 * d, b - 7 * c)
-        .stroke({ color: 0xc6b68d, width: 0.8, alpha });
-    }
-  });
-  const [fx, fy] = point(-20, -21);
-  g.moveTo(fx, fy + 5)
-    .lineTo(fx, fy - 12)
-    .stroke({ color: INK, width: 1, alpha });
-  g.poly([fx, fy - 12, fx + 12, fy - 9, fx, fy - 5]).fill({
+  const cohesion = s.cohesion ?? 100,
+    faded = s.routing ? 0.55 : 1,
+    slots = slotsOf(s),
+    hitZone = flash > 0 && s.lastZone ? zoneSlots[s.lastZone] : [];
+  g.ellipse(x + 1.5, y + 4, 26, 22).fill({ color: INK, alpha: 0.1 * alpha });
+  g.poly([...point(31, 0), ...point(23, 6), ...point(23, -6)]).fill({
     color,
-    alpha,
+    alpha: alpha * faded,
   });
+  if (alpha > 0.5) {
+    g.circle(x, y, 29).stroke({ color: 0xd6d0be, width: 3, alpha: 0.7 });
+    g.moveTo(x, y - 29)
+      .arc(
+        x,
+        y,
+        29,
+        -Math.PI / 2,
+        -Math.PI / 2 + (Math.PI * 2 * Math.max(0.5, cohesion)) / 100,
+      )
+      .stroke({ color: cohesion < 30 ? 0xc0913f : color, width: 3 });
+  }
+  const disorder = Math.max(0, 1 - cohesion / 60);
+  for (let slot = 0; slot < 6; slot++) {
+    const { a, b } = slotOffset(slot),
+      i = slots.indexOf(slot),
+      [px, py] = point(
+        a + (i >= 0 ? Math.sin(slot * 7) * disorder * 3 : 0),
+        b + (i >= 0 ? Math.cos(slot * 4) * disorder * 3 : 0),
+      );
+    if (i < 0) {
+      g.roundRect(px - 6.5, py - 6.5, 13, 13, 3)
+        .fill({ color, alpha: 0.12 * alpha * faded })
+        .stroke({ color, width: 1, alpha: 0.55 * alpha * faded });
+      continue;
+    }
+    g.roundRect(px - 7.5, py - 7.5, 15, 15, 3.5)
+      .fill({ color, alpha: alpha * faded })
+      .stroke({
+        color: hitZone.includes(slot) ? 0xf0b54a : CREAM,
+        width: hitZone.includes(slot) ? 2.5 : 1.2,
+        alpha: hitZone.includes(slot) ? flash : alpha,
+      });
+    icon(g, s.members[i], px, py, 12, CREAM, alpha);
+  }
 }
 export default function Board() {
   const ref = useRef<HTMLDivElement>(null),
     menuRef = useRef<HTMLDivElement>(null);
   const game = useTactics();
+  const [type, setType] = useState<TroopType | null>(null),
+    [picked, setPicked] = useState<number | null>(null);
+  const reserve = game.battle.outpost?.reserve;
+  // Keep a type chosen that still has troops left.
+  const chosenType =
+    reserve && type && reserve[type] > 0
+      ? type
+      : (troopTypes.find((t) => (reserve?.[t] ?? 0) > 0) ?? null);
+  const recruitSquad =
+    game.deployCell === null
+      ? undefined
+      : game.battle.squads.find((u) => u.cell === game.deployCell);
 
   useEffect(() => {
     let dead = false;
@@ -146,31 +205,26 @@ export default function Board() {
         return;
       }
       ref.current!.appendChild(app.canvas);
+      const observer = new ResizeObserver(() => app.resize());
+      observer.observe(ref.current!);
       const world = new Container(),
         base = new Container(),
-        overlay = new Graphics();
-      app.stage.addChild(world);
+        overlay = new Graphics(),
+        hud = new Graphics();
+      app.stage.addChild(world, hud);
       world.addChild(base, overlay);
       const b = useTactics.getState().battle;
-      const morale = (u: Squad, x: number, y: number, color: number) => {
-        if (!u.engaged && !u.routing) return;
-        overlay
-          .roundRect(x - 21, y + 31, 42, 4, 2)
-          .fill({ color: 0x706f60, alpha: 0.25 });
-        overlay
-          .roundRect(
-            x - 21,
-            y + 31,
-            Math.max(0.2, (42 * (u.cohesion ?? 100)) / 100),
-            4,
-            2,
-          )
-          .fill((u.cohesion ?? 100) < 30 ? 0xb28a49 : color);
-        if (u.lastHit !== undefined && b.time - u.lastHit < 0.25)
-          overlay.circle(x, y, 29).stroke({
+      const flashOf = (u: Squad) =>
+        u.lastHit === undefined
+          ? 0
+          : Math.max(0, 1 - (b.time - u.lastHit) / 0.6);
+      // Hit flash around the token.
+      const morale = (u: Squad, x: number, y: number) => {
+        if (u.lastHit !== undefined && b.time - u.lastHit < 0.3)
+          overlay.circle(x, y, 31).stroke({
             color: 0xe7c381,
-            width: 2,
-            alpha: 1 - (b.time - u.lastHit) / 0.25,
+            width: 3,
+            alpha: 1 - (b.time - u.lastHit) / 0.3,
           });
       };
       const terrain = new Graphics();
@@ -180,9 +234,9 @@ export default function Board() {
         terrain
           .poly(hex(c.x, c.y))
           .fill(
-            c.height === 30 ? 0xe4dfbd : c.height === 15 ? 0xd4d6b9 : 0xeee9d8,
+            c.height === 30 ? 0xded6bb : c.height === 15 ? 0xe6dfc8 : 0xefeadb,
           )
-          .stroke({ color: 0xaaa998, alpha: 0.38, width: 0.8 });
+          .stroke({ color: 0xaaa998, alpha: 0.32, width: 0.8 });
         if (c.height > 0) {
           for (let k = 0; k < 6; k++) {
             const a = ((k * 60 - 30) * Math.PI) / 180,
@@ -209,14 +263,14 @@ export default function Board() {
               terrain
                 .moveTo(x1, y1)
                 .lineTo(x2, y2)
-                .stroke({ color: 0x8c9879, width: 4 });
-              for (let j = 1; j < 6; j++) {
-                const x = x1 + ((x2 - x1) * j) / 6,
-                  y = y1 + ((y2 - y1) * j) / 6;
+                .stroke({ color: 0x968c6c, width: 2, alpha: 0.85 });
+              for (let j = 1; j < 5; j++) {
+                const x = x1 + ((x2 - x1) * j) / 5,
+                  y = y1 + ((y2 - y1) * j) / 5;
                 terrain
                   .moveTo(x, y)
-                  .lineTo(x + Math.cos(mid) * 8, y + Math.sin(mid) * 8)
-                  .stroke({ color: 0x7e8e78, width: 1.3 });
+                  .lineTo(x + Math.cos(mid) * 6, y + Math.sin(mid) * 6)
+                  .stroke({ color: 0x968c6c, width: 1, alpha: 0.6 });
               }
             }
           }
@@ -242,6 +296,22 @@ export default function Board() {
               .fill({ color: 0xa3b18d, alpha: 0.3 });
             terrain.circle(x, y, 2).fill(0x5b6b51);
           }
+        }
+        if (c.terrain === "rock") {
+          terrain
+            .poly(hex(c.x, c.y, R - 2))
+            .fill({ color: 0xc9c6b6, alpha: 0.55 });
+          for (const id of adjacent(c.id))
+            if (b.cells[id].terrain === "rock" && id > c.id)
+              terrain
+                .moveTo(c.x, c.y)
+                .lineTo(b.cells[id].x, b.cells[id].y)
+                .stroke({
+                  color: 0xa4a393,
+                  width: 16,
+                  alpha: 0.45,
+                  cap: "round",
+                });
         }
         if (c.terrain === "rock")
           for (let j = 0; j < 3; j++) {
@@ -305,6 +375,7 @@ export default function Board() {
         (c) =>
           c.place &&
           (!b.lesson ||
+            b.outpost ||
             b.lesson.index < 2 ||
             b.lesson.index >= 4 ||
             c.id === b.lesson.target ||
@@ -330,6 +401,24 @@ export default function Board() {
             c.x + 17,
             c.y + 10,
           ]).fill(0x668fa2);
+        } else if (c.place === "camp") {
+          for (const dx of [-12, 12])
+            g.poly([
+              c.x + dx - 11,
+              c.y + 12,
+              c.x + dx,
+              c.y - 10,
+              c.x + dx + 11,
+              c.y + 12,
+            ])
+              .fill(0xb98a78)
+              .stroke({ color: 0x8a5a4c, width: 2 });
+          g.moveTo(c.x, c.y - 8)
+            .lineTo(c.x, c.y - 34)
+            .stroke({ color: INK, width: 1.5 });
+          g.poly([c.x, c.y - 34, c.x + 15, c.y - 29, c.x, c.y - 23]).fill(
+            0xc8615a,
+          );
         } else if (c.place === "village") {
           for (const dx of [-13, 12]) {
             g.rect(c.x + dx - 9, c.y - 12, 18, 26).fill(0xb87958);
@@ -350,7 +439,9 @@ export default function Board() {
               ? "FUERTE DEL ALBA"
               : c.place === "village"
                 ? "ALDEA DEL VALLE"
-                : "LA VIGÍA"),
+                : c.place === "camp"
+                  ? "CAMPAMENTO RIVAL"
+                  : "LA VIGÍA"),
           c.x,
           c.y + 50,
           9,
@@ -358,27 +449,19 @@ export default function Board() {
       }
       text(
         base,
-        "+30",
+        "▲ 30",
         b.cells[4 * 18 + 6].x,
         b.cells[4 * 18 + 6].y,
-        13,
-        0x7b8068,
+        11,
+        0x8f8668,
       );
       text(
         base,
-        "+15",
-        b.cells[7 * 18 + 8].x,
-        b.cells[7 * 18 + 8].y,
-        13,
-        0x7b8068,
-      );
-      text(
-        base,
-        "0",
-        b.cells[9 * 18 + 11].x,
-        b.cells[9 * 18 + 11].y,
-        13,
-        0x8a8e7c,
+        "▲ 15",
+        b.cells[2 * 18 + 8].x,
+        b.cells[2 * 18 + 8].y,
+        11,
+        0x8f8668,
       );
       let pan = { x: 0, y: 0 },
         fit = 1,
@@ -394,10 +477,51 @@ export default function Board() {
           panY: number;
           unit: string | null;
         } | null = null,
-        moved = false;
+        moved = false,
+        // A waiting troop being dragged from the fort, in world coordinates.
+        drag: { type: TroopType; index: number; x: number; y: number } | null =
+          null;
+      // Waiting troops stand in a small yard west of the fort, outside the
+      // ring of deploy cells: two columns of three, nearest column first.
+      const queueSpots = () => {
+        const f = b.cells[b.outpost!.fort];
+        return Array.from({ length: FORT_CAP }, (_, k) => ({
+          x: f.x - (k < 3 ? 124 : 144),
+          y: f.y + ((k % 3) - 1) * 19,
+        }));
+      };
+      // Where a formation slot of a squad sits on the map right now.
+      const slotWorld = (u: Squad, slot: number) => {
+        const p = squadPosition(b, u),
+          { a, b: side } = slotOffset(slot),
+          c = Math.cos(u.facing),
+          d = Math.sin(u.facing);
+        return { x: p.x + a * c - side * d, y: p.y + a * d + side * c };
+      };
+      // Squads that can take one more troop where they stand.
+      const hosts = () =>
+        b.squads.filter(
+          (u) => u.members.length < 6 && !deploymentError(b, u.cell),
+        );
+      const drop = (p: { x: number; y: number }, type: TroopType) => {
+        const s = useTactics.getState();
+        for (const u of hosts()) {
+          const taken = slotsOf(u);
+          for (let slot = 0; slot < 6; slot++) {
+            if (taken.includes(slot)) continue;
+            const w = slotWorld(u, slot);
+            if (Math.hypot(w.x - p.x, w.y - p.y) < 12)
+              return s.dropTroop(u.cell, type, slot);
+          }
+        }
+        const id = cellAt(p);
+        if (id >= 0 && !deploymentError(b, id)) s.dropTroop(id, type);
+      };
       const canvas = app.canvas;
       const transform = () => {
         const s = useTactics.getState();
+        // The canvas can report a zero size before layout settles.
+        if (app.screen.width < 50 || app.screen.height < 50) return;
         if (
           app.screen.width !== lastW ||
           app.screen.height !== lastH ||
@@ -405,47 +529,34 @@ export default function Board() {
         ) {
           lastW = app.screen.width;
           lastH = app.screen.height;
+          const narrow = lastW < 700,
+            // Once raids exist the whole frontier, east road included, is framed.
+            wide =
+              !!b.outpost && (!!b.outpost.camp || (b.lesson?.index ?? 0) >= 2);
           fit = b.outpost
-            ? lastW < 700
+            ? narrow
               ? 0.6
-              : Math.min((lastW - 60) / (DX * 16), (lastH - 180) / (R * 14))
-            : b.lesson?.index === 0
-              ? Math.min((lastW - 60) / (DX * 8), (lastH - 230) / (R * 9))
-              : b.lesson && (b.lesson.index === 2 || b.lesson.index === 3)
-                ? Math.min((lastW - 60) / (DX * 12), (lastH - 230) / (R * 12))
-                : b.fronts
-                  ? Math.min((lastW - 50) / (DX * 18), (lastH - 170) / (R * 18))
-                  : Math.min((lastW - 55) / (DX * 8), (lastH - 190) / (R * 12));
-          pan = {
-            x:
-              lastW / 2 -
-              DX *
-                (b.outpost
-                  ? 3.8
-                  : b.lesson?.index === 0
-                    ? 5
-                    : b.lesson && (b.lesson.index === 2 || b.lesson.index === 3)
-                      ? 7
-                      : b.fronts
-                        ? 8.75
-                        : 14.5) *
-                fit *
-                s.zoom,
-            y:
-              lastH / 2 -
-              R *
-                (b.outpost
-                  ? 12
-                  : b.lesson?.index === 0
-                    ? 12
-                    : b.lesson && (b.lesson.index === 2 || b.lesson.index === 3)
-                      ? 9
-                      : b.fronts
-                        ? 8.2
-                        : 9.2) *
-                fit *
-                s.zoom,
-          };
+              : Math.min(
+                  (lastW - 60) / (DX * (wide ? 19 : 16)),
+                  (lastH - 180) / (R * (wide ? 17 : 14)),
+                )
+            : b.fronts
+              ? Math.min((lastW - 50) / (DX * 18), (lastH - 170) / (R * 18))
+              : Math.min((lastW - 55) / (DX * 8), (lastH - 190) / (R * 12));
+          const z = fit * s.zoom;
+          pan = b.outpost
+            ? {
+                x: lastW / 2 - DX * (wide && !narrow ? 8.75 : 3.8) * z,
+                y: narrow
+                  ? (lastH + 210) / 2 - R * 9 * z
+                  : wide
+                    ? (lastH + 60) / 2 - R * 8.25 * z
+                    : lastH / 2 - R * 12 * z,
+              }
+            : {
+                x: lastW / 2 - DX * (b.fronts ? 8.75 : 14.5) * z,
+                y: lastH / 2 - R * (b.fronts ? 8.2 : 9.2) * z,
+              };
           lastFocus = s.focus;
           lastZoom = s.zoom;
         }
@@ -489,6 +600,15 @@ export default function Board() {
         canvas.style.cursor = "grabbing";
         const p = local(e),
           u = hit(p);
+        if (b.outpost) {
+          const waiting = queue(b.outpost),
+            spots = queueSpots(),
+            index = waiting.findIndex(
+              (_, k) => Math.hypot(spots[k].x - p.x, spots[k].y - p.y) < 12,
+            );
+          if (index >= 0)
+            drag = { type: waiting[index], index, x: p.x, y: p.y };
+        }
         down = {
           x: e.clientX,
           y: e.clientY,
@@ -510,6 +630,14 @@ export default function Board() {
             : state.selected
               ? "crosshair"
               : "grab";
+        if (drag && down) {
+          const p = local(e);
+          drag.x = p.x;
+          drag.y = p.y;
+          if (Math.hypot(e.clientX - down.x, e.clientY - down.y) > 6)
+            moved = true;
+          return;
+        }
         if (down && Math.hypot(e.clientX - down.x, e.clientY - down.y) > 6) {
           moved = true;
           if (!down.unit)
@@ -527,16 +655,31 @@ export default function Board() {
           p = local(e),
           id = cellAt(p),
           u = hit(p);
-        if (s.orienting && s.selected) {
-          const unit = b.squads.find((u) => u.id === s.selected)!;
-          const at = squadPosition(b, unit);
-          s.rotate(Math.atan2(p.y - at.y, p.x - at.x));
+        if (drag) {
+          const type = drag.type;
+          drag = null;
+          if (moved) drop(p, type);
+          else {
+            // A tap on a waiting troop opens the tray next to the fort.
+            const candidate = adjacent(b.outpost!.fort).find(
+              (n) =>
+                !deploymentError(b, n) && !b.squads.some((q) => q.cell === n),
+            );
+            if (candidate !== undefined)
+              useTactics.setState({ deployCell: candidate, selected: null });
+          }
         } else if (moved && down.unit && id >= 0) s.move(id);
         else if (!moved) {
           if (u) {
             s.select(u.id);
-            if (b.outpost && !deploymentError(b, u.cell))
-              useTactics.setState({ deployCell: u.cell });
+          } else if (
+            b.outpost &&
+            id >= 0 &&
+            !deploymentError(b, id) &&
+            Object.values(b.outpost.reserve).some((n) => n > 0)
+          ) {
+            // Blue cells always deploy while troops remain; drag to move there.
+            useTactics.setState({ deployCell: id, selected: null });
           } else if (s.selected && id >= 0) s.move(id);
           else if (b.outpost && id >= 0 && !deploymentError(b, id)) {
             useTactics.setState({ deployCell: id, selected: null });
@@ -591,27 +734,31 @@ export default function Board() {
       canvas.addEventListener("pointercancel", cancel);
       canvas.addEventListener("pointerleave", cancel);
       canvas.addEventListener("wheel", wheel, { passive: false });
+      // Neighbour across each hex edge k (edge k spans corners k and k + 1).
+      const edges = b.cells.map((c) =>
+        Array.from({ length: 6 }, (_, k) => {
+          const a = (k * Math.PI) / 3;
+          return adjacent(c.id).find((id) => {
+            const n = b.cells[id];
+            return (
+              Math.abs(
+                Math.atan2(
+                  Math.sin(Math.atan2(n.y - c.y, n.x - c.x) - a),
+                  Math.cos(Math.atan2(n.y - c.y, n.x - c.x) - a),
+                ),
+              ) < 0.2
+            );
+          });
+        }),
+      );
       // Cache sector edges; ownership colors are redrawn from simulation state.
       const borders = b.sectors
-        ? b.cells.map((c) =>
-            Array.from({ length: 6 }, (_, k) => {
-              const a = (k * Math.PI) / 3,
-                near = adjacent(c.id).find((id) => {
-                  const n = b.cells[id];
-                  return (
-                    Math.abs(
-                      Math.atan2(
-                        Math.sin(Math.atan2(n.y - c.y, n.x - c.x) - a),
-                        Math.cos(Math.atan2(n.y - c.y, n.x - c.x) - a),
-                      ),
-                    ) < 0.2
-                  );
-                });
-              return (
+        ? edges.map((row, id) =>
+            row.map(
+              (near) =>
                 near === undefined ||
-                b.sectorCells![near] !== b.sectorCells![c.id]
-              );
-            }),
+                b.sectorCells![near] !== b.sectorCells![id],
+            ),
           )
         : [];
       let lastTerritory = -1;
@@ -631,8 +778,8 @@ export default function Board() {
           const c = b.cells[s.deployCell],
             x = c.x * world.scale.x + pan.x,
             y = c.y * world.scale.y + pan.y;
-          menuRef.current.style.left = `${Math.max(8, Math.min(app.screen.width - 230, x + 24 * world.scale.x))}px`;
-          menuRef.current.style.top = `${Math.max(80, Math.min(app.screen.height - 155, y - 23 * world.scale.y))}px`;
+          menuRef.current.style.left = `${Math.max(8, Math.min(app.screen.width - 244, x - 118))}px`;
+          menuRef.current.style.top = `${Math.max(80, Math.min(app.screen.height - 155, y + 34 * world.scale.y))}px`;
           menuRef.current.style.visibility =
             x < 0 || x > app.screen.width || y < 0 || y > app.screen.height
               ? "hidden"
@@ -780,8 +927,8 @@ export default function Board() {
           for (const front of b.fronts!) {
             const e = front.troop,
               p = squadPosition(b, e);
-            soldiers(overlay, e, p.x, p.y, e.facing, 1, 0xc15c53);
-            morale(e, p.x, p.y, 0xc15c53);
+            token(overlay, e, p.x, p.y, e.facing, 1, ENEMY);
+            morale(e, p.x, p.y);
             let from = p;
             if (!e.engaged)
               for (const id of e.path) {
@@ -811,30 +958,6 @@ export default function Board() {
                 .stroke({ color: BLUE, alpha: 0.32, width: 1 });
               from = c;
             }
-          }
-        }
-        if (b.lesson) {
-          const c = b.cells[b.lesson.target];
-          overlay.poly(hex(c.x, c.y, R - 2)).stroke({
-            color: BLUE,
-            width: 2,
-            alpha: 0.45 + Math.sin(b.time * 2) * 0.15,
-          });
-          if (b.lesson.index === 0) {
-            overlay
-              .circle(c.x, c.y, R - 7)
-              .stroke({ color: BLUE, alpha: 0.15, width: 3 });
-            if (b.lesson.progress > 0)
-              overlay
-                .moveTo(c.x, c.y - (R - 7))
-                .arc(
-                  c.x,
-                  c.y,
-                  R - 7,
-                  -Math.PI / 2,
-                  -Math.PI / 2 + b.lesson.progress * Math.PI * 2,
-                )
-                .stroke({ color: BLUE, width: 3 });
           }
         }
         if (b.outpost) {
@@ -882,15 +1005,52 @@ export default function Board() {
                 });
             }
           }
+          const camp = b.outpost.camp;
+          if (camp && camp.progress > 0 && !camp.taken) {
+            const c = b.cells[camp.cell];
+            overlay
+              .moveTo(c.x, c.y - (R - 6))
+              .arc(
+                c.x,
+                c.y,
+                R - 6,
+                -Math.PI / 2,
+                -Math.PI / 2 + camp.progress * Math.PI * 2,
+              )
+              .stroke({ color: BLUE, width: 3 });
+          }
+          // Land: what is yours, with a crisp frontier; red where it is eaten.
           territory.clear();
-          const control = outpostInfluence(b);
-          for (const [id, amount] of control) {
-            if (amount <= 0) continue;
-            const c = b.cells[id];
-            territory
-              .poly(hex(c.x, c.y, R - 1))
-              .fill({ color: BLUE, alpha: amount * 0.18 })
-              .stroke({ color: BLUE, alpha: amount * 0.35, width: 1 });
+          const land = b.outpost.land ?? [],
+            eating = eaten(b);
+          for (const c of b.cells) {
+            const v = land[c.id] ?? 0;
+            if (v > 0.02)
+              territory
+                .poly(hex(c.x, c.y, R - 1))
+                .fill({ color: BLUE, alpha: v * 0.16 });
+            if (v >= HOLD)
+              edges[c.id].forEach((n, k) => {
+                if (n !== undefined && (land[n] ?? 0) >= HOLD) return;
+                const a = ((k * 60 - 30) * Math.PI) / 180;
+                territory
+                  .moveTo(c.x + Math.cos(a) * R, c.y + Math.sin(a) * R)
+                  .lineTo(
+                    c.x + Math.cos(a + Math.PI / 3) * R,
+                    c.y + Math.sin(a + Math.PI / 3) * R,
+                  )
+                  .stroke({ color: BLUE, width: 2.5, alpha: 0.75 });
+              });
+            if (eating.has(c.id) && v > 0.02) {
+              territory
+                .poly(hex(c.x, c.y, R - 3))
+                .fill({ color: ENEMY, alpha: 0.08 + v * 0.1 });
+              for (let j = -1; j <= 1; j++)
+                territory
+                  .moveTo(c.x - 12 + j * 11, c.y + 11)
+                  .lineTo(c.x + j * 11, c.y - 11)
+                  .stroke({ color: ENEMY, width: 1.2, alpha: 0.45 });
+            }
           }
           for (const site of b.outpost.sites) {
             const c = b.cells[site.cell];
@@ -917,10 +1077,11 @@ export default function Board() {
             } else {
               overlay
                 .poly(hex(c.x, c.y, R - 4))
-                .stroke({ color: BLUE, width: 1, alpha: 0.3 });
+                .fill({ color: BLUE, alpha: 0.05 })
+                .stroke({ color: BLUE, width: 1.5, alpha: 0.6 });
               overlay
-                .rect(c.x - 10, c.y - 10, 20, 20)
-                .stroke({ color: 0x8e9989, width: 1.5, alpha: 0.65 });
+                .rect(c.x - 11, c.y - 11, 22, 22)
+                .stroke({ color: 0x6f7d6c, width: 1.8, alpha: 0.9 });
               overlay
                 .moveTo(c.x - 5, c.y)
                 .lineTo(c.x + 5, c.y)
@@ -945,9 +1106,8 @@ export default function Board() {
             }
           }
         }
-        const raid = b.raid,
-          village = b.cells[b.raid?.target ?? 8 * 18 + 14];
-        if (raid) {
+        for (const raid of activeRaids(b)) {
+          const village = b.cells[raid.target ?? 8 * 18 + 14];
           const danger =
             raid.phase === "loot" ||
             (raid.phase === "approach" &&
@@ -1001,7 +1161,7 @@ export default function Board() {
           if (raid.phase !== "gone") {
             const e = raid.troop,
               p = squadPosition(b, e);
-            soldiers(overlay, e, p.x, p.y, e.facing, 1, 0xc15c53);
+            token(overlay, e, p.x, p.y, e.facing, 1, ENEMY, flashOf(e));
             let from = p;
             for (const id of raid.phase === "fight" ? [] : e.path) {
               const c = b.cells[id],
@@ -1016,29 +1176,67 @@ export default function Board() {
                   .fill({ color: 0xc15c53, alpha: 0.6 });
               from = c;
             }
-            morale(e, p.x, p.y, 0xc15c53);
+            morale(e, p.x, p.y);
           }
         }
+        // Clashes: contested hexes tint and a crossed marker sits between foes.
+        const clashes = new Set<string>();
+        for (const u of allTroops(b)) {
+          const foe = u.engaged
+            ? allTroops(b).find((o) => o.id === u.engaged)
+            : undefined;
+          if (!foe) continue;
+          const key = [u.id, foe.id].sort().join("|");
+          if (clashes.has(key)) continue;
+          clashes.add(key);
+          const p = squadPosition(b, u),
+            q = squadPosition(b, foe),
+            pulse = reducedMotion.matches ? 0 : Math.sin(b.time * 5) * 0.04;
+          for (const at of [p, q])
+            overlay
+              .poly(hex(at.x, at.y, R - 3))
+              .fill({ color: 0xc8615a, alpha: 0.1 + pulse });
+          const mx = (p.x + q.x) / 2,
+            my = (p.y + q.y) / 2;
+          overlay
+            .circle(mx, my, 9)
+            .fill({ color: CREAM, alpha: 0.9 })
+            .stroke({ color: INK, width: 1, alpha: 0.5 });
+          overlay
+            .moveTo(mx - 5, my - 5)
+            .lineTo(mx + 5, my + 5)
+            .moveTo(mx + 5, my - 5)
+            .lineTo(mx - 5, my + 5)
+            .stroke({ color: INK, width: 2 });
+        }
         for (const hit of b.strikes ?? []) {
-          const t = Math.min(1, (b.time - hit.time) / 0.55),
+          const t = Math.min(1, (b.time - hit.time) / 0.45),
             dx = hit.tx - hit.x,
             dy = hit.ty - hit.y,
-            len = Math.hypot(dx, dy) || 1;
+            len = Math.hypot(dx, dy) || 1,
+            color = hit.enemy ? ENEMY : BLUE;
           const x = hit.x + dx * t,
-            y = hit.y + dy * t - Math.sin(t * Math.PI) * 12;
+            y = hit.y + dy * t - Math.sin(t * Math.PI) * 14;
           if (t < 1)
             overlay
-              .moveTo(x - (dx / len) * 9, y - (dy / len) * 9)
+              .moveTo(x - (dx / len) * 12, y - (dy / len) * 12)
               .lineTo(x, y)
-              .stroke({ color: hit.enemy ? 0xb65149 : BLUE, width: 1.8 });
+              .stroke({ color, width: 2.6, cap: "round" });
           else {
-            const a = Math.max(0, 1 - (b.time - hit.time - 0.55) / 0.25);
+            const k = Math.min(1, (b.time - hit.time - 0.45) / 0.35);
+            if (k >= 1) continue;
             overlay
-              .moveTo(hit.tx - 5, hit.ty - 5)
-              .lineTo(hit.tx + 5, hit.ty + 5)
-              .moveTo(hit.tx + 5, hit.ty - 5)
-              .lineTo(hit.tx - 5, hit.ty + 5)
-              .stroke({ color: 0xb8995f, width: 2, alpha: a });
+              .circle(hit.tx, hit.ty, 8 + k * 16)
+              .stroke({ color, width: 3 * (1 - k), alpha: 1 - k });
+            for (let j = 0; j < 4; j++) {
+              const a = j * (Math.PI / 2) + Math.PI / 4,
+                r1 = 6 + k * 10,
+                r2 = 11 + k * 14;
+              overlay
+                .moveTo(hit.tx + Math.cos(a) * r1, hit.ty + Math.sin(a) * r1)
+                .lineTo(hit.tx + Math.cos(a) * r2, hit.ty + Math.sin(a) * r2)
+                .stroke({ color: 0xd9a54a, width: 2, alpha: 1 - k });
+            }
           }
         }
         const selected = b.squads.find((u) => u.id === s.selected);
@@ -1068,16 +1266,9 @@ export default function Board() {
             overlay
               .poly(hex(end.x, end.y, R - 4))
               .stroke({ color: BLUE, alpha: 0.5, width: 1.4 });
-            soldiers(
-              overlay,
-              selected,
-              end.x,
-              end.y,
-              selected.targetFacing,
-              0.25,
-            );
+            token(overlay, selected, end.x, end.y, selected.targetFacing, 0.25);
           }
-          if (hover >= 0 && hover !== selected.cell && !s.orienting) {
+          if (hover >= 0 && hover !== selected.cell) {
             const c = b.cells[hover],
               valid = route(b, selected, hover).length > 0;
             overlay
@@ -1085,12 +1276,8 @@ export default function Board() {
               .fill({ color: valid ? BLUE : 0xbe6359, alpha: 0.09 })
               .stroke({ color: valid ? BLUE : 0xbe6359, width: 1, alpha: 0.7 });
             if (valid)
-              soldiers(overlay, selected, c.x, c.y, selected.targetFacing, 0.2);
+              token(overlay, selected, c.x, c.y, selected.targetFacing, 0.2);
           }
-          if (s.orienting)
-            overlay
-              .circle(at.x, at.y, R + 5)
-              .stroke({ color: BLUE, width: 1, alpha: 0.6 });
         }
         for (const u of b.squads) {
           const p = squadPosition(b, u);
@@ -1104,19 +1291,209 @@ export default function Board() {
               .circle(p.x, p.y, 15 + age / 25)
               .stroke({ color: BLUE, width: 2, alpha: 0.55 * (1 - age / 650) });
 
-          soldiers(overlay, u, p.x, p.y, u.facing);
-          morale(u, p.x, p.y, BLUE);
-          const a = u.facing;
+          token(overlay, u, p.x, p.y, u.facing, 1, BLUE, flashOf(u));
+          morale(u, p.x, p.y);
+        }
+        const beat = reducedMotion.matches
+          ? 0.5
+          : (Math.sin(b.time * 4) + 1) / 2;
+        if (b.outpost) {
+          const o = b.outpost,
+            f = b.cells[o.fort],
+            waiting = queue(o),
+            spots = queueSpots(),
+            count = waitingCount(o),
+            // Blue with room, amber when nearly full, red when the next arrival is lost.
+            tone =
+              count >= FORT_CAP
+                ? ENEMY
+                : count >= FORT_CAP - 1
+                  ? 0xc0913f
+                  : BLUE;
           overlay
+            .roundRect(f.x - 156, f.y - 31, 44, 62, 9)
+            .fill({ color: CREAM, alpha: 0.9 })
+            .stroke({
+              color: tone,
+              width: 1.5 + (count >= FORT_CAP ? beat * 2 : 0),
+              alpha: count ? 0.9 : 0.4,
+            });
+          overlay
+            .moveTo(f.x - 112, f.y)
+            .lineTo(f.x - 26, f.y)
+            .stroke({ color: tone, width: 1, alpha: 0.35 });
+          spots.forEach((spot, k) => {
+            if (k >= waiting.length || (drag && drag.index === k)) {
+              overlay
+                .circle(spot.x, spot.y, 2.5)
+                .fill({ color: tone, alpha: 0.35 });
+              return;
+            }
+            const fresh =
+              o.lastArrival &&
+              b.time - o.lastArrival.time < 0.6 &&
+              waiting.lastIndexOf(o.lastArrival.type) === k
+                ? 1 - (b.time - o.lastArrival.time) / 0.6
+                : 0;
+            overlay
+              .roundRect(spot.x - 8, spot.y - 8 - fresh * 6, 16, 16, 4)
+              .fill(BLUE)
+              .stroke({ color: CREAM, width: 1.5 });
+            icon(overlay, waiting[k], spot.x, spot.y - fresh * 6, 12, CREAM);
+          });
+          // Waves gather at their entry point before setting out.
+          for (const g of gathering(b)) {
+            const c = b.cells[g.from],
+              shown = Math.max(1, Math.ceil(g.progress * g.units.length));
+            overlay
+              .circle(c.x, c.y, 30)
+              .stroke({ color: ENEMY, width: 2, alpha: 0.25 });
+            overlay
+              .moveTo(c.x, c.y - 30)
+              .arc(
+                c.x,
+                c.y,
+                30,
+                -Math.PI / 2,
+                -Math.PI / 2 + g.progress * Math.PI * 2,
+              )
+              .stroke({
+                color: ENEMY,
+                width: 3 + (g.progress > 0.75 ? beat * 2 : 0),
+              });
+            g.units.slice(0, shown).forEach((unit, k) => {
+              const x = c.x + ((k % 3) - 1) * 17,
+                y =
+                  c.y +
+                  (Math.floor(k / 3) - (g.units.length > 3 ? 0.5 : 0)) * 17;
+              overlay
+                .roundRect(x - 7.5, y - 7.5, 15, 15, 3.5)
+                .fill(ENEMY)
+                .stroke({ color: CREAM, width: 1.2 });
+              icon(overlay, unit, x, y, 12, CREAM);
+            });
+          }
+          if (drag) {
+            // Where the dragged troop can go: free deploy cells and the holes
+            // of squads that can be reinforced where they stand.
+            for (const c of b.cells) {
+              if (
+                deploymentError(b, c.id) ||
+                b.squads.some((u) => u.cell === c.id)
+              )
+                continue;
+              overlay
+                .poly(hex(c.x, c.y, R - 4))
+                .fill({ color: BLUE, alpha: 0.08 + beat * 0.06 })
+                .stroke({ color: BLUE, width: 2, alpha: 0.6 });
+            }
+            for (const u of hosts()) {
+              const taken = slotsOf(u);
+              for (let slot = 0; slot < 6; slot++) {
+                if (taken.includes(slot)) continue;
+                const w = slotWorld(u, slot),
+                  near = Math.hypot(w.x - drag.x, w.y - drag.y) < 12;
+                overlay
+                  .roundRect(w.x - 8, w.y - 8, 16, 16, 4)
+                  .fill({ color: BLUE, alpha: near ? 0.5 : 0.15 + beat * 0.15 })
+                  .stroke({ color: BLUE, width: near ? 2.5 : 1.5 });
+              }
+            }
+            // The ghost reads green or red against the next wave.
+            const next = upcoming(b).find((e) => e.kind === "enemy");
+            const edge = next ? matchup([drag.type], next.units) : 1;
+            const ring = edge > 1.1 ? 0x3f7f4f : edge < 0.9 ? ENEMY : BLUE;
+            overlay
+              .circle(drag.x, drag.y, 15)
+              .stroke({ color: ring, width: 3 });
+            overlay
+              .roundRect(drag.x - 9, drag.y - 9, 18, 18, 4)
+              .fill(BLUE)
+              .stroke({ color: CREAM, width: 1.5 });
+            icon(overlay, drag.type, drag.x, drag.y, 14, CREAM);
+          }
+        }
+        // Off-screen raids and forming waves show as arrows on the screen edge.
+        hud.clear();
+        const threats = [
+          ...activeRaids(b)
+            .filter((r) => r.phase !== "retreat")
+            .map((r) => squadPosition(b, r.troop)),
+          ...gathering(b).map((g) => b.cells[g.from]),
+        ];
+        for (const threat of threats) {
+          const sx = threat.x * world.scale.x + pan.x,
+            sy = threat.y * world.scale.y + pan.y,
+            top = app.screen.width < 700 ? 240 : 120,
+            bottom = app.screen.height - 90;
+          if (sx >= 0 && sx <= app.screen.width && sy >= top && sy <= bottom)
+            continue;
+          const cx = Math.max(28, Math.min(app.screen.width - 28, sx)),
+            cy = Math.max(top, Math.min(bottom, sy)),
+            a = Math.atan2(sy - cy, sx - cx),
+            pulse = reducedMotion.matches ? 0 : Math.sin(b.time * 4) * 3;
+          hud
+            .circle(cx, cy, 17 + pulse)
+            .fill({ color: CREAM, alpha: 0.92 })
+            .stroke({ color: ENEMY, width: 2 });
+          hud
             .poly([
-              p.x + Math.cos(a) * 33,
-              p.y + Math.sin(a) * 33,
-              p.x + Math.cos(a + 0.18) * 27,
-              p.y + Math.sin(a + 0.18) * 27,
-              p.x + Math.cos(a - 0.18) * 27,
-              p.y + Math.sin(a - 0.18) * 27,
+              cx + Math.cos(a) * 11,
+              cy + Math.sin(a) * 11,
+              cx + Math.cos(a + 2.4) * 8,
+              cy + Math.sin(a + 2.4) * 8,
+              cx + Math.cos(a - 2.4) * 8,
+              cy + Math.sin(a - 2.4) * 8,
             ])
-            .fill({ color: BLUE, alpha: 0.65 });
+            .fill(ENEMY);
+        }
+        // Signals without words: marks on cells, readings around troops.
+        const tones: Record<Tone, number> = {
+          go: BLUE,
+          danger: ENEMY,
+          good: 0x3f7f4f,
+        };
+        const { marks, readings } = guide(b, s),
+          pulse = reducedMotion.matches ? 0.5 : (Math.sin(b.time * 4) + 1) / 2;
+        for (const m of marks) {
+          const c = b.cells[m.cell],
+            color = tones[m.tone];
+          overlay
+            .poly(hex(c.x, c.y, R - 3))
+            .fill({ color, alpha: 0.06 + pulse * 0.08 })
+            .stroke({ color, width: 2.5, alpha: 0.5 + pulse * 0.4 });
+          if (m.style === "ghost") {
+            // The tower that would stand here.
+            overlay
+              .rect(c.x - 11, c.y - 11, 22, 22)
+              .fill({ color: 0xc5c3b0, alpha: 0.3 + pulse * 0.3 })
+              .stroke({ color, width: 1.5, alpha: 0.7 });
+            overlay
+              .moveTo(c.x - 10, c.y - 10)
+              .lineTo(c.x - 10, c.y - 31)
+              .stroke({ color: INK, width: 1.5, alpha: 0.45 });
+            overlay
+              .poly([c.x - 10, c.y - 31, c.x + 5, c.y - 27, c.x - 10, c.y - 21])
+              .fill({ color, alpha: 0.5 });
+          }
+        }
+        for (const r of readings) {
+          const t = allTroops(b).find((u) => u.id === r.id);
+          if (!t) continue;
+          const p = squadPosition(b, t),
+            color = tones[r.tone],
+            up = r.tone === "good";
+          overlay
+            .circle(p.x, p.y, 34 + pulse * 2)
+            .stroke({ color, width: 3, alpha: 0.85 });
+          for (let k = 0; k < 2; k++) {
+            const cy = p.y - 44 - k * 6;
+            overlay
+              .moveTo(p.x - 6, cy + (up ? 3 : -3))
+              .lineTo(p.x, cy + (up ? -3 : 3))
+              .lineTo(p.x + 6, cy + (up ? 3 : -3))
+              .stroke({ color, width: 2.4 });
+          }
         }
       });
       cleanup = () => {
@@ -1126,6 +1503,7 @@ export default function Board() {
         canvas.removeEventListener("pointercancel", cancel);
         canvas.removeEventListener("pointerleave", cancel);
         canvas.removeEventListener("wheel", wheel);
+        observer.disconnect();
         app.destroy(true, { children: true });
       };
     })();
@@ -1148,23 +1526,14 @@ export default function Board() {
           aria-label="Añadir tropas en esta celda"
         >
           <div className="map-recruit-heading">
-            <div
-              className="squad-capacity"
-              aria-label={`Capacidad ${game.battle.squads.find((u) => u.cell === game.deployCell)?.members.length ?? 0} de 6`}
-            >
-              {Array.from({ length: 6 }, (_, i) => (
-                <i
-                  key={i}
-                  className={
-                    i <
-                    (game.battle.squads.find((u) => u.cell === game.deployCell)
-                      ?.members.length ?? 0)
-                      ? "filled"
-                      : ""
-                  }
-                />
-              ))}
-            </div>
+            <span className="recruit-title">
+              {(() => {
+                const unit = game.battle.squads.find(
+                  (u) => u.cell === game.deployCell,
+                );
+                return unit ? `Reforzar ${unit.name}` : "Nuevo escuadrón";
+              })()}
+            </span>
             <button
               aria-label="Cerrar tropas disponibles"
               onClick={() => useTactics.setState({ deployCell: null })}
@@ -1172,25 +1541,43 @@ export default function Board() {
               ×
             </button>
           </div>
-          <div className="recruit-tokens">
-            {troopTypes.map((type) => (
-              <button
-                key={type}
-                aria-label={`Añadir ${troopNames[type]}`}
-                title={troopNames[type]}
-                disabled={
-                  game.battle.outpost!.reserve[type] === 0 ||
-                  !!deploymentError(game.battle, game.deployCell!)
-                }
-                onClick={() => game.placeTroop(type)}
-              >
-                <i className={`reserve-icon ${type}`}>
-                  {type === "shield" ? "♜" : type === "bow" ? "⌁" : "♞"}
-                </i>
-                <span className="token-name">{troopNames[type]}</span>
-                <b>{game.battle.outpost!.reserve[type]}</b>
-              </button>
-            ))}
+          <div className="recruit-body">
+            <div className="recruit-types" role="radiogroup" aria-label="Tropa">
+              {troopTypes.map((type) => (
+                <button
+                  key={type}
+                  role="radio"
+                  aria-checked={chosenType === type}
+                  aria-label={`${troopNames[type]}: ${game.battle.outpost!.reserve[type]} en reserva`}
+                  title={troopNames[type]}
+                  className={chosenType === type ? "chosen" : ""}
+                  disabled={game.battle.outpost!.reserve[type] === 0}
+                  onClick={() => {
+                    setType(type);
+                    setPicked(null);
+                  }}
+                >
+                  <TroopIcon type={type} size={22} />
+                  <b>{game.battle.outpost!.reserve[type]}</b>
+                </button>
+              ))}
+            </div>
+            <FormationGrid
+              squad={recruitSquad}
+              picked={picked}
+              ghost={chosenType}
+              disabled={!!deploymentError(game.battle, game.deployCell!)}
+              onSlot={(slot) => {
+                const taken = recruitSquad ? slotsOf(recruitSquad) : [];
+                if (picked !== null && recruitSquad) {
+                  // Second tap: move the picked member here.
+                  if (slot !== picked)
+                    game.arrange(recruitSquad.id, picked, slot);
+                  setPicked(null);
+                } else if (taken.includes(slot)) setPicked(slot);
+                else if (chosenType) game.placeTroop(chosenType, slot);
+              }}
+            />
           </div>
         </div>
       )}

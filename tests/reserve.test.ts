@@ -41,12 +41,13 @@ test("secured tower unlocks local deployment and destruction closes it", () => {
   assert.ok(deploymentError(b, site.cell));
   assert.equal(b.squads.length, 1);
 });
-test("timed arrivals remain in reserve without automatically forming squads", () => {
+test("land yields troops that wait at the fort without forming squads", () => {
   const b = createOutpost();
+  // The fort's own ring (7 cells) yields a troop every 320 / 7 ≈ 46 s.
   for (let i = 0; i < 1800; i++) {
     advance(b, 0.05);
     updateOutpost(b, 0.05);
   }
   assert.equal(b.squads.length, 0);
-  assert.deepEqual(b.outpost!.reserve, { shield: 2, bow: 1, horse: 1 });
+  assert.deepEqual(b.outpost!.reserve, { shield: 2, bow: 0, horse: 0 });
 });

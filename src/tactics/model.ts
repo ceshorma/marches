@@ -1,4 +1,4 @@
-import { attackDamage } from "./combat";
+import { attackDamage, zoneFrom } from "./combat";
 import type { TroopType } from "./combat";
 import { advanceFronts } from "./fronts";
 export const COLS = 18,
@@ -13,7 +13,7 @@ export type Cell = {
   y: number;
   height: number;
   terrain: "plain" | "forest" | "rock";
-  place?: "fort" | "village" | "tower";
+  place?: "fort" | "village" | "tower" | "camp";
 };
 export type Squad = {
   id: string;
@@ -22,6 +22,10 @@ export type Squad = {
   facing: number;
   targetFacing: number;
   members: TroopType[];
+  // Formation slot of each member (see combat.ts); derived when absent.
+  layout?: number[];
+  // Last zone that took a blow, for the hit flash.
+  lastZone?: "front" | "left" | "right" | "rear";
   path: number[];
   progress: number;
   hold: boolean;
@@ -43,6 +47,29 @@ export type Raid = {
   stolen: number;
   outcome: "active" | "protected" | "raided";
   resolvedAt: number;
+  // Cohesion the raiders recover to between clashes.
+  strength?: number;
+  // Scripted wave this raid belongs to, and whether its outcome was applied.
+  wave?: number;
+  handled?: boolean;
+};
+// A scripted mission: enemy waves and friendly arrivals on a shared clock.
+export type WaveSpec = {
+  at: number;
+  from: number;
+  units: TroopType[];
+  layout?: number[];
+  // "tower" picks the next standing tower (or the fort if none stand).
+  target: "tower" | "fort" | number;
+  strength: number;
+};
+export type Script = {
+  trigger: "start" | "tower";
+  clock: number | null;
+  waves: WaveSpec[];
+  arrivals: { at: number; type: TroopType }[];
+  spawned: number;
+  delivered: number;
 };
 export type Sector = {
   id: string;
@@ -58,6 +85,16 @@ export type Front = {
   home: number;
   target: string;
   rethink: number;
+};
+export type RaidPlan = {
+  firstDelay: number;
+  interval: number;
+  waves: TroopType[][];
+  strength: number;
+  // Raids stop once this many have been repelled.
+  limit: number;
+  // Repeat a wave's composition until the player repels it.
+  retry?: boolean;
 };
 export type OutpostSite = {
   cell: number;
@@ -75,9 +112,32 @@ export type Battle = {
     waves: number;
     noticeUntil: number;
     notice: string;
+    // Where on the map the notice is anchored, and how it reads.
+    noticeAt?: number;
+    noticeTone?: "go" | "info" | "danger" | "good";
+    // Troops added next to a tower rather than the fort.
+    towerDeploys: number;
     recruitAt: number;
     reserve: Record<TroopType, number>;
     arrivals: number;
+    lastArrival?: { type: TroopType; time: number };
+    // Campaign missions tune these; free play keeps the defaults.
+    supply: TroopType[];
+    supplyEvery: number;
+    raids: RaidPlan;
+    repelled: number;
+    // Ownership of each cell, 0–1; held from 0.5 (see outpost.ts).
+    land?: number[];
+    // Progress towards the next troop earned by held land.
+    harvest?: number;
+    // Arrivals lost because the fort was full.
+    turnedAway: number;
+    // Raids that ended either way, and raids that sacked the fort.
+    resolved: number;
+    fortSacked: number;
+    lostTowers: number;
+    script?: Script;
+    camp?: { cell: number; needs: number; progress: number; taken: boolean };
   };
   lesson?: {
     index: number;
@@ -93,6 +153,8 @@ export type Battle = {
   squads: Squad[];
   time: number;
   raid?: Raid;
+  // Simultaneous raids (outpost and campaign); `raid` is the legacy village scenario.
+  raids?: Raid[];
   fronts?: Front[];
   sectors?: Sector[];
   sectorCells?: number[];
@@ -108,11 +170,19 @@ export type Battle = {
     enemy: boolean;
   }[];
 };
+// Height levels the attacker stands above its target.
+export const rise = (b: Battle, source: Squad, target: Squad) =>
+  (b.cells[source.cell].height - b.cells[target.cell].height) / 15;
 export const allTroops = (b: Battle) => [
   ...b.squads,
   ...(b.fronts?.map((f) => f.troop) ?? []),
   ...(b.raid && b.raid.phase !== "gone" ? [b.raid.troop] : []),
+  ...(b.raids ?? []).filter((r) => r.phase !== "gone").map((r) => r.troop),
 ];
+export const activeRaids = (b: Battle) =>
+  [...(b.raid ? [b.raid] : []), ...(b.raids ?? [])].filter(
+    (r) => r.phase !== "gone",
+  );
 export const adjacent = (id: number) => {
   const q = id % COLS,
     r = Math.floor(id / COLS);
@@ -345,8 +415,9 @@ export function advanceRaid(b: Battle, dt: number) {
       if (s.cohesion >= 60) s.routing = false;
     }
   }
-  const r = b.raid;
-  if (!r || r.phase === "gone") return;
+  for (const r of activeRaids(b)) stepRaid(b, r, dt);
+}
+function stepRaid(b: Battle, r: Raid, dt: number) {
   const e = r.troop;
   e.cohesion ??= 100;
   e.cooldown = Math.max(0, (e.cooldown ?? 0) - dt);
@@ -364,13 +435,16 @@ export function advanceRaid(b: Battle, dt: number) {
     damage: number,
     enemy: boolean,
   ) => {
+    const p = squadPosition(b, source),
+      t = squadPosition(b, target),
+      zone = zoneFrom(target.facing, p, t);
     target.cohesion = Math.max(
       0,
-      (target.cohesion ?? 100) - attackDamage(source, target, damage),
+      (target.cohesion ?? 100) -
+        attackDamage(source, target, damage, rise(b, source, target), zone),
     );
     target.lastHit = b.time;
-    const p = squadPosition(b, source),
-      t = squadPosition(b, target);
+    target.lastZone = zone;
     b.strikes!.push({ x: p.x, y: p.y, tx: t.x, ty: t.y, time: b.time, enemy });
     source.cooldown = 1.35;
   };
@@ -443,7 +517,10 @@ export function advanceRaid(b: Battle, dt: number) {
           e.cell === (r.target ?? 8 * COLS + 14) && !e.path.length
             ? "loot"
             : "approach";
-      e.cohesion = Math.min(b.outpost ? 30 : 100, e.cohesion + dt * 2);
+      e.cohesion = Math.min(
+        r.strength ?? (b.outpost ? 30 : 100),
+        e.cohesion + dt * 2,
+      );
       for (const s of b.squads)
         if (!s.routing)
           s.cohesion = Math.min(100, (s.cohesion ?? 100) + dt * 3);
@@ -469,20 +546,33 @@ export function advanceRaid(b: Battle, dt: number) {
       r.phase = "gone";
       return;
     }
-    if (r.phase !== "loot")
-      e.path = route(
-        b,
-        e,
+    if (r.phase !== "loot") {
+      const goal =
         r.phase === "retreat"
           ? (r.home ?? 3 * COLS + 17)
-          : (r.target ?? 8 * COLS + 14),
-      );
+          : (r.target ?? 8 * COLS + 14);
+      e.path = route(b, e, goal);
+      // A held goal: close in on the nearest free neighbour and fight there.
+      if (
+        !e.path.length &&
+        r.phase === "approach" &&
+        !adjacent(goal).includes(e.cell)
+      )
+        e.path =
+          adjacent(goal)
+            .map((n) => route(b, e, n))
+            .filter((p) => p.length)
+            .sort((p, q) => p.length - q.length)[0] ?? [];
+    }
   }
   if (!e.path.length) return;
   const next = e.path[0];
   if (
-    b.squads.some(
-      (s) => s.cell === next || (s.progress > 0 && s.path[0] === next),
+    // Other raids block too: several can be on the map at once.
+    allTroops(b).some(
+      (s) =>
+        s.id !== e.id &&
+        (s.cell === next || (s.progress > 0 && s.path[0] === next)),
     )
   ) {
     if (!e.progress)

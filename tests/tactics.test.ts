@@ -103,20 +103,6 @@ test("pause stops time and movement", () => {
   useTactics.getState().tick(1);
   assert.equal(JSON.stringify(useTactics.getState().battle), old);
 });
-test("orientation issued during movement persists after reaching cell", () => {
-  useTactics.setState({ scenario: "village" });
-  useTactics.getState().reset();
-  const g = useTactics.getState();
-  g.select("s1");
-  g.move(125);
-  g.tick(0.3);
-  g.rotate(Math.PI);
-  for (let i = 0; i < 200; i++) g.tick(0.05);
-  const u = g.battle.squads[0];
-  assert.equal(u.path.length, 0);
-  assert.ok(Math.abs(Math.cos(u.facing) + 1) < 0.001);
-});
-
 test("opening raid visibly advances and loots if ignored", () => {
   const b = createBattle(true),
     start = b.raid!.troop.cell;

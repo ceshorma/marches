@@ -1,4 +1,4 @@
-import { attackDamage } from "./combat";
+import { attackDamage, zoneFrom } from "./combat";
 import type { TroopType } from "./combat";
 import {
   createBattle,
@@ -10,6 +10,7 @@ import {
   squadPosition,
   DX,
   COLS,
+  rise,
 } from "./model";
 import type { Battle, Squad, Sector } from "./model";
 const at = (q: number, r: number) => r * COLS + q;
@@ -277,9 +278,17 @@ export function advanceFronts(b: Battle, dt: number) {
       t = squadPosition(b, target);
     target.cohesion = Math.max(
       0,
-      target.cohesion! - attackDamage(source, target),
+      target.cohesion! -
+        attackDamage(
+          source,
+          target,
+          6,
+          rise(b, source, target),
+          zoneFrom(target.facing, p, t),
+        ),
     );
     target.lastHit = b.time;
+    target.lastZone = zoneFrom(target.facing, p, t);
     source.cooldown = 1.5;
     b.strikes!.push({ x: p.x, y: p.y, tx: t.x, ty: t.y, time: b.time, enemy });
   }

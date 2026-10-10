@@ -110,18 +110,6 @@ button:focus-visible {
   width: 39px;
   height: 39px;
 }
-.compass {
-  position: absolute;
-  left: 34px;
-  top: 140px;
-  text-align: center;
-  color: #8f9787;
-  font: 10px Georgia;
-}
-.compass span {
-  display: block;
-  font-size: 30px;
-}
 .squad-list {
   position: absolute;
   left: 26px;
@@ -182,25 +170,6 @@ button:focus-visible {
 .orders button:last-child {
   padding: 0;
 }
-.mini-formation {
-  display: grid;
-  grid-template-columns: repeat(2, 8px);
-  grid-template-rows: repeat(3, 8px);
-  gap: 4px;
-  padding: 6px 18px;
-  border-left: 1px solid #dadccd;
-  border-right: 1px solid #dadccd;
-}
-.mini-formation i {
-  display: block;
-  background: #397cac;
-  border-radius: 2px;
-}
-.mini-formation .bow {
-  background: transparent;
-  border: 2px solid #397cac;
-  border-radius: 50%;
-}
 .quiet-hint {
   position: absolute;
   bottom: 38px;
@@ -245,7 +214,6 @@ button:focus-visible {
   border-radius: 6px;
   font-size: 11px;
 }
-.orientation-hint,
 .tactical-toast {
   position: absolute;
   left: 50%;
@@ -256,11 +224,6 @@ button:focus-visible {
   border: 1px solid #d7d7c9;
   border-radius: 4px;
   font-size: 12px;
-}
-.orientation-hint span {
-  margin-left: 12px;
-  color: #91988b;
-  font-size: 10px;
 }
 .tactical-toast {
   bottom: 180px;
@@ -295,9 +258,6 @@ button:focus-visible {
   .unit-title span {
     font-size: 9px;
   }
-  .mini-formation {
-    padding: 6px 9px;
-  }
   .squad-list {
     left: 12px;
     top: 130px;
@@ -305,16 +265,9 @@ button:focus-visible {
   .squad-list button {
     padding: 8px;
   }
-  .compass {
-    display: none;
-  }
   .quiet-hint {
     bottom: 90px;
     font-size: 10px;
-  }
-  .orientation-hint {
-    bottom: 175px;
-    white-space: nowrap;
   }
   .map-tools {
     right: 18px;
@@ -445,43 +398,6 @@ button:focus-visible {
     gap: 3px;
   }
 }
-.matchups {
-  border-left: 1px solid #d7d7c9;
-  padding-left: 12px;
-  min-width: 177px;
-}
-.matchups small {
-  font-size: 9px;
-  color: #899280;
-  display: block;
-  margin-bottom: 5px;
-}
-.matchup-row,
-.matchup-head {
-  display: grid;
-  grid-template-columns: 75px 43px 43px;
-  gap: 3px;
-  font-size: 9px;
-  margin-top: 4px;
-}
-.matchup-head {
-  color: #91988b;
-  font-size: 8px;
-}
-.matchup-row b {
-  font-weight: 500;
-}
-.favorable {
-  color: #397cac;
-}
-.unfavorable {
-  color: #b75850;
-}
-.mini-formation .horse {
-  border-radius: 1px;
-  transform: rotate(45deg);
-  background: #76654f;
-}
 .recruit-types {
   display: flex;
   flex-direction: column;
@@ -492,31 +408,7 @@ button:focus-visible {
   min-height: 26px !important;
   padding: 3px 9px !important;
 }
-.orders:has(.matchups) {
-  gap: 11px;
-}
-.orders:has(.matchups) .mini-formation {
-  display: none;
-}
 @media (max-width: 700px) {
-  .orders:has(.matchups) {
-    flex-wrap: wrap;
-    justify-content: center;
-    width: 95vw;
-    gap: 8px;
-  }
-  .orders:has(.matchups) .unit-title {
-    min-width: 100%;
-    text-align: center;
-  }
-  .matchups {
-    border-left: 0;
-    padding-left: 0;
-  }
-  .matchup-row,
-  .matchup-head {
-    font-size: 8px;
-  }
   .unit-title span {
     white-space: normal;
   }
@@ -601,44 +493,6 @@ button:focus-visible {
     font-size: 17px;
   }
 }
-.reserve-tray {
-  position: absolute;
-  left: 28px;
-  top: 104px;
-  display: flex;
-  align-items: center;
-  gap: 13px;
-  padding: 8px 11px;
-  background: #f8f6efed;
-  border: 1px solid #d7d7c9;
-  border-radius: 5px;
-}
-.reserve-tray small {
-  font-size: 9px;
-  color: #899280;
-}
-.reserve-tray span {
-  display: flex;
-  align-items: center;
-  gap: 5px;
-  color: #397cac;
-}
-.reserve-tray b {
-  font-size: 11px;
-  font-weight: 500;
-}
-.reserve-tray .empty {
-  opacity: 0.35;
-}
-.reserve-icon {
-  font-style: normal;
-  font-size: 20px;
-  line-height: 1;
-  color: #397cac;
-}
-.reserve-icon.horse {
-  color: #76654f;
-}
 .map-recruit {
   position: absolute;
   z-index: 6;
@@ -682,17 +536,8 @@ button:focus-visible {
   width: 185px;
 }
 @media (max-width: 700px) {
-  .reserve-tray {
-    top: 147px;
-    left: 12px;
-    gap: 10px;
-    padding: 7px;
-  }
   .squad-list {
     top: 215px;
-  }
-  .reserve-tray small {
-    display: none;
   }
   .map-recruit button {
     min-height: 40px;
@@ -750,7 +595,7 @@ button:focus-visible {
 
 /* A small muster tray, anchored to the selected hex. */
 .map-recruit:has(.map-recruit-heading) {
-  width: 218px;
+  width: 236px;
   padding: 7px;
   border: 0;
   background: #f5f3eceb;
@@ -760,62 +605,322 @@ button:focus-visible {
 .map-recruit-heading {
   padding: 0 6px 3px 13px;
 }
-.squad-capacity {
+
+/* Legibility pass: secondary text that guides play must read at a glance. */
+.brand span {
+  font-size: 11px;
+  color: #6f766c;
+}
+.region {
+  font-size: 14px;
+}
+.region > span {
+  font-size: 13px;
+  color: #56605a;
+  margin-top: 10px;
+}
+.unit-title span {
+  font-size: 12px;
+  color: #6f7a6c;
+}
+.orders button span,
+.squad-list small {
+  font-size: 11px;
+}
+/* Mission steps sit in their own tray instead of floating over the map. */
+.campaign-steps {
+  padding: 4px;
+  background: #f8f6efed;
+  border: 1px solid #d7d7c9;
+  border-radius: 20px;
+}
+.campaign-steps button {
+  font-size: 11px;
+  border-color: transparent;
+}
+.campaign-steps button:disabled {
+  opacity: 0.3;
+}
+.mission-result strong {
+  font-size: 21px;
+}
+@media (max-width: 700px) {
+  .brand span {
+    font-size: 10px;
+  }
+  .region > span {
+    font-size: 12px;
+  }
+  .campaign-steps {
+    top: 146px;
+    padding: 2px;
+  }
+  .unit-title span {
+    font-size: 11px;
+  }
+}
+@media (max-width: 700px) {
+  /* Leave room for a two-line hint under the objective. */
+  .campaign-steps {
+    top: 178px;
+  }
+  .squad-list,
+  .squad-list.expanded {
+    top: 236px;
+  }
+}
+.recruit-title {
+  white-space: nowrap;
+  font-size: 11px;
+  color: #4f5c56;
+  font-weight: 600;
+  margin-right: auto;
+}
+.map-recruit-heading {
+  gap: 8px;
+}
+
+/* Unit icons and formations. */
+.troop-icon {
+  flex: none;
+  color: #326f97;
+  vertical-align: -2px;
+}
+.troop-icon.horse {
+  color: #8a6a3e;
+}
+@keyframes arrival {
+  0% {
+    box-shadow: 0 0 0 0 #326f9766;
+    transform: scale(1.06);
+  }
+  100% {
+    box-shadow: 0 0 0 14px #326f9700;
+    transform: scale(1);
+  }
+}
+.formation {
+  display: grid;
+  grid-template-columns: repeat(2, 34px);
+  grid-auto-rows: 34px;
+  gap: 4px;
+  align-content: start;
+}
+.formation-head {
+  font-size: 9px;
+  color: #7d897d;
+  text-align: center;
+  height: 12px;
+  line-height: 12px;
+  align-self: end;
+}
+.formation-head + .formation-head + .slot {
+  margin-top: 0;
+}
+.tactical-game .formation .slot {
+  min-width: 0;
+  min-height: 0;
+  width: 34px;
+  height: 34px;
+  padding: 0;
+  border-radius: 7px;
+}
+.tactical-game .formation .slot.filled {
+  background: #326f97;
+  color: #f4f0e3;
+}
+.tactical-game .formation .slot.filled .troop-icon {
+  color: #f4f0e3;
+}
+.tactical-game .formation .slot.empty {
+  border: 1.5px dashed #326f9755;
+  background: #326f970a;
+}
+.tactical-game .formation .slot .ghost {
+  opacity: 0;
+  transition: opacity 120ms;
+}
+.tactical-game .formation .slot.empty:hover .ghost,
+.tactical-game .formation .slot.empty:focus-visible .ghost {
+  opacity: 0.45;
+}
+.tactical-game .formation .slot.chosen {
+  outline: 2.5px solid #e0a63c;
+  outline-offset: 1px;
+}
+.tactical-game .formation .slot:disabled {
+  opacity: 0.6;
+}
+/* Recruit tray: troop type on the left, formation on the right. */
+.map-recruit:has(.map-recruit-heading) {
+  width: auto;
+  border-radius: 18px;
+}
+.recruit-body {
   display: flex;
-  gap: 5px;
+  gap: 12px;
+  padding: 4px 6px 4px;
 }
-.squad-capacity i {
-  width: 8px;
-  height: 4px;
-  background: #34475025;
-  border-radius: 1px;
-}
-.squad-capacity i.filled {
-  background: #397cac;
-}
-.recruit-tokens {
-  display: flex;
-  gap: 7px;
-}
-.recruit-tokens button {
-  position: relative;
-  width: 64px;
-  height: 76px;
-  padding: 6px 1px;
+.recruit-types {
   display: flex;
   flex-direction: column;
-  justify-content: center;
-  gap: 2px;
-  border-radius: 22px;
-  border: 1px solid #397cac45;
-  background: #397cac0c;
+  gap: 4px;
+  padding-top: 14px;
 }
-.recruit-tokens .reserve-icon {
-  font-size: 29px;
-  line-height: 32px;
-  font-style: normal;
-}
-.recruit-tokens .token-name {
-  font-size: 9px;
-}
-.recruit-tokens button b {
-  position: absolute;
-  right: 0;
-  top: -4px;
-  display: grid;
-  place-items: center;
-  min-width: 20px;
-  height: 20px;
-  border-radius: 50%;
-  background: #397cac;
-  color: #fff;
+.tactical-game .recruit-types button {
+  position: relative;
+  width: 46px;
+  min-height: 34px !important;
+  padding: 2px 6px !important;
+  justify-content: flex-start;
+  border: 1px solid #326f9733;
+  border-radius: 9px;
   font-size: 11px;
-  border: 2px solid #f5f3ec;
 }
-.recruit-tokens button:not(:disabled):active {
-  transform: scale(0.94);
+.tactical-game .recruit-types button.chosen {
+  background: #326f971c;
+  border-color: #326f97;
 }
-.recruit-tokens button:disabled {
-  border-color: transparent;
-  background: transparent;
+.recruit-types b {
+  font-weight: 600;
+  margin-left: auto;
+}
+.orders .formation {
+  padding: 0 14px;
+  border-left: 1px solid #dadccd;
+  border-right: 1px solid #dadccd;
+}
+/* Timeline: next enemy waves (red) and arrivals (blue) slide towards now. */
+.timeline {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  justify-content: center;
+  margin-top: 12px;
+  pointer-events: auto;
+}
+.wave-dots {
+  display: flex;
+  gap: 4px;
+}
+.wave-dots i {
+  display: block;
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  border: 1.5px solid #b4544b;
+}
+.wave-dots i.done {
+  background: #b4544b;
+}
+.track {
+  position: relative;
+  width: 280px;
+  height: 26px;
+  border-bottom: 1px solid #c9c6b6;
+}
+.track .now {
+  position: absolute;
+  left: 0;
+  bottom: -4px;
+  width: 2px;
+  height: 9px;
+  background: #344750;
+}
+.track .event {
+  position: absolute;
+  bottom: 3px;
+  display: flex;
+  gap: 1px;
+  padding: 2px 4px;
+  border-radius: 9px;
+  transform: translateX(-2px);
+  transition: left 0.25s linear;
+  background: #f8f6ef;
+  border: 1.5px solid currentColor;
+}
+.track .event.enemy {
+  color: #b4544b;
+}
+.track .event.enemy .troop-icon {
+  color: #b4544b;
+}
+.track .event.ally {
+  color: #326f97;
+}
+@media (max-width: 700px) {
+  .track {
+    width: 200px;
+  }
+}
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  white-space: nowrap;
+}
+@media (max-width: 700px) {
+  .timeline {
+    gap: 8px;
+    margin-top: 8px;
+  }
+  .wave-dots {
+    gap: 2px;
+  }
+  .wave-dots i {
+    width: 5px;
+    height: 5px;
+    border-width: 1px;
+  }
+  .track {
+    width: 150px;
+  }
+  .campaign-steps {
+    top: 206px;
+  }
+  .squad-list,
+  .squad-list.expanded {
+    top: 250px;
+  }
+}
+/* Land: cells held against the mission goal. */
+.land-meter {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+  color: #326f97;
+}
+.land-meter .bar {
+  position: relative;
+  width: 70px;
+  height: 7px;
+  border-radius: 4px;
+  background: #326f971f;
+}
+.land-meter .bar i {
+  position: absolute;
+  inset: 0 auto 0 0;
+  border-radius: 4px;
+  background: #326f97;
+  transition: width 0.4s ease;
+}
+.land-meter .bar b {
+  position: absolute;
+  top: -3px;
+  bottom: -3px;
+  width: 2px;
+  margin-left: -1px;
+  background: #344750;
+}
+.land-meter.met span {
+  font-weight: 600;
+}
+@media (max-width: 700px) {
+  .land-meter .bar {
+    width: 44px;
+  }
 }

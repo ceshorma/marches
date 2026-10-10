@@ -2,3 +2,5 @@ node_modules/
 dist/
 *.tsbuildinfo
 .sites-runtime/
+.vercel
+.env*.local

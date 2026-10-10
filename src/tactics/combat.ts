@@ -26,9 +26,109 @@ export function matchup(
     ) / attackers.length
   );
 }
-export function attackDamage(source: Squad, target: Squad, base = 6) {
+// Per level of height (15 m) between attacker and target. Archers gain the
+// most from shooting down; cavalry loses its charge uphill.
+export const heightTable: Record<TroopType, { down: number; up: number }> = {
+  shield: { down: 0.1, up: 0 },
+  bow: { down: 0.25, up: -0.2 },
+  horse: { down: 0.1, up: -0.2 },
+};
+// rise: attacker levels above the target; negative attacks uphill.
+export function heightBonus(attackers: TroopType[], rise: number): number {
+  if (!attackers.length || !rise) return 1;
   return (
-    base * (source.members.length / 6) * matchup(source.members, target.members)
+    attackers.reduce(
+      (sum, a) =>
+        sum +
+        Math.max(
+          0.4,
+          1 +
+            Math.abs(rise) *
+              (rise > 0 ? heightTable[a].down : heightTable[a].up),
+        ),
+      0,
+    ) / attackers.length
+  );
+}
+// Formation slots, seen with the squad facing right:
+//   3 0    back-left   front-left     (left flank: 0, 3)
+//   4 1    back-centre front-centre
+//   5 2    back-right  front-right    (right flank: 2, 5)
+export type Zone = "front" | "left" | "right" | "rear";
+export const zoneSlots: Record<Zone, number[]> = {
+  front: [0, 1, 2],
+  rear: [3, 4, 5],
+  left: [0, 3],
+  right: [2, 5],
+};
+export const isFront = (slot: number) => slot < 3;
+// Preferred free slot for a new member: archers behind, the rest in front.
+export function preferredSlot(type: TroopType, taken: number[]): number {
+  const order = type === "bow" ? [4, 3, 5, 1, 0, 2] : [1, 0, 2, 4, 3, 5];
+  return order.find((slot) => !taken.includes(slot)) ?? -1;
+}
+// Slot of each member; squads without an explicit layout get a sensible one.
+export function slotsOf(s: Pick<Squad, "members" | "layout">): number[] {
+  if (s.layout && s.layout.length === s.members.length) return s.layout;
+  const taken: number[] = [];
+  // Place archers last so the front fills with melee first.
+  const order = s.members
+    .map((m, i) => [m, i] as const)
+    .sort((a, c) => Number(a[0] === "bow") - Number(c[0] === "bow"));
+  const slots = Array<number>(s.members.length);
+  for (const [m, i] of order) {
+    slots[i] = preferredSlot(m, taken);
+    taken.push(slots[i]);
+  }
+  return slots;
+}
+// Which side of the defender an attack lands on, given the attacker position.
+export function zoneFrom(
+  facing: number,
+  from: { x: number; y: number },
+  at: { x: number; y: number },
+): Zone {
+  const a = Math.atan2(from.y - at.y, from.x - at.x) - facing,
+    rel = Math.atan2(Math.sin(a), Math.cos(a));
+  if (Math.abs(rel) <= Math.PI / 3) return "front";
+  if (Math.abs(rel) >= (Math.PI * 2) / 3) return "rear";
+  return rel > 0 ? "right" : "left";
+}
+// Melee fights best in front; archers shoot best from behind.
+export const slotWeight = (type: TroopType, slot: number) =>
+  type === "bow" ? (isFront(slot) ? 0.7 : 1) : isFront(slot) ? 1 : 0.85;
+// Members a blow from this zone reaches; an empty zone leaves the whole
+// squad exposed.
+export function struck(s: Squad, zone: Zone) {
+  const slots = slotsOf(s),
+    hit = s.members.filter((_, i) => zoneSlots[zone].includes(slots[i]));
+  return hit.length
+    ? { members: hit, exposed: false }
+    : { members: s.members, exposed: true };
+}
+export function attackDamage(
+  source: Squad,
+  target: Squad,
+  base = 6,
+  rise = 0,
+  zone: Zone = "front",
+) {
+  const slots = slotsOf(source),
+    hit = struck(target, zone);
+  let weight = 0,
+    sum = 0;
+  source.members.forEach((m, i) => {
+    const w = slotWeight(m, slots[i]);
+    weight += w;
+    sum += w * matchup([m], hit.members);
+  });
+  if (!weight) return 0;
+  return (
+    base *
+    (weight / 6) *
+    (sum / weight) *
+    heightBonus(source.members, rise) *
+    (hit.exposed ? 1.25 : 1)
   );
 }
 export function composition(s: Squad) {

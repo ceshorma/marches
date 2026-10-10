@@ -2,35 +2,52 @@
 
 Prototipo de apertura: protege una aldea aliada de una patrulla visible en un tablero cenital de 18 × 12 hexágonos. React, TypeScript, PixiJS, Zustand y Vite; sin backend ni recursos gráficos externos.
 
+## Campaña 1 · «La Marca del Este»
+
+El juego comienza en la campaña: seis misiones sobre el mapa de La frontera. Cada misión es una serie de **oleadas** enemigas y **llegadas** de tropas propias sobre un mismo reloj, con un objetivo de tierra (dominar o conservar cierto número de casillas al pasar la última oleada) o, en la última, tomar el campamento rival. Lo que cambia entre misiones es el mapa, de dónde vienen los enemigos y qué tropas traen. Una línea de tiempo bajo el objetivo muestra lo que viene: incursiones en rojo con sus tropas, refuerzos en azul; los puntos rojos cuentan las oleadas resueltas. La cabecera muestra además tus casillas frente a la meta. Si se acaban las oleadas sin la tierra pedida, la misión se pierde.
+
+Al completarla, el juego arranca en «La frontera». El diseño está en [docs/campana-1.md](docs/campana-1.md); el código, en `src/tactics/campaign.ts` (misiones) y `src/tactics/outpost.ts` (guion de oleadas, incursiones simultáneas). Se guarda el desbloqueo en localStorage (`marches-campaign-1`), no la partida.
+
+## Tierra: lo propio
+
+Lo que es tuyo es la tierra, en azul con una frontera continua.
+
+- **Se gana:** el cuartel sostiene su anillo y cada torre en pie proyecta tierra a su alrededor (las rocas la cortan; bosque y desnivel consumen alcance). Crece poco a poco desde la torre.
+- **Se pierde:** una tropa enemiga se come la tierra que pisa y la de al lado; las casillas que se están perdiendo se tiñen de rojo. Si se come la casilla de una torre, la torre cae y su tierra se apaga poco a poco.
+- **Rinde:** la tierra que tienes trae tropas al patio: cuanta más, más rápido (como mucho, una cada 12 s). Expandirte da más tropas y más frontera que defender.
+- **Objetivos:** las misiones piden casillas («Domina 18 casillas», «Conserva 18 casillas») al pasar la última oleada. La cabecera muestra una barra con tus casillas y la meta marcada. Saquear el cuartel sigue siendo derrota inmediata.
+
+El modelo está en `src/tactics/outpost.ts` (`updateLand`, `held`, `eaten`).
+
+## Presión visible: cuartel y oleadas
+
+Como en Mini Metro, la presión se acumula en el mapa donde ocurre:
+
+- **Tropas esperando.** Los refuerzos llegan al patio junto al cuartel (a su oeste, fuera del anillo de despliegue) y esperan ahí, a la vista. Caben seis: el borde del patio pasa de azul a ámbar cuando queda un sitio y a rojo, latiendo, cuando está lleno. Una tropa que llega con el patio lleno se retira y se pierde.
+- **Arrastrar para desplegar.** Arrastra una tropa del patio a una casilla azul libre (escuadrón nuevo) o al hueco concreto de un escuadrón que puede reforzarse donde está. Mientras arrastras se iluminan los destinos válidos, y la tropa lleva un anillo verde o rojo según cómo le iría contra la próxima oleada. Tocar una tropa del patio abre el menú de despliegue junto al cuartel.
+- **Huecos visibles.** Las posiciones vacías de cada escuadrón se dibujan como casillas con borde.
+- **La oleada se reúne.** Durante sus últimos 15 segundos, la próxima incursión se va juntando a la vista en su punto de entrada, con un anillo rojo que se llena; al completarse, sale. Si está fuera de la pantalla, una flecha en el borde lo indica.
+
+## Formación
+
+Cada escuadrón tiene seis posiciones: dos columnas (frente y atrás) por tres filas (flanco izquierdo, centro, flanco derecho). Al desplegar eliges el tipo de tropa y la posición donde entra; en el panel del escuadrón seleccionado puedes reordenarla tocando un integrante y luego otra casilla (fuera de combate).
+
+- **Dónde cae el golpe:** un ataque de frente golpea la columna del frente; uno lateral, el flanco de ese lado; uno por detrás, la retaguardia. El tipo de tropa en esa zona decide la ventaja. Si la zona está vacía, el escuadrón queda expuesto y recibe un 25 % más.
+- **Dónde rinde cada tropa:** lanceros y caballería pelean al 100 % al frente y al 85 % atrás; los arqueros al 100 % atrás y al 70 % al frente.
+- En el mapa, la ficha muestra la formación orientada hacia su frente, con un icono por integrante (lanza, arco, caballo); la zona golpeada destella.
+
 ## La frontera (nuevo inicio)
 
 Un ciclo continuo sobre el mismo mapa:
 
-1. Tocar una celda delimitada en **azul** junto al cuartel y elegir un lancero de la reserva para crear un escuadrón.
-2. Ordenarle llegar a uno de tres emplazamientos. Permanecer quieto allí construye una torre en seis segundos; salir pausa la construcción.
-3. La torre proyecta control gradualmente durante unos siete segundos sobre hasta dos pasos de terreno conectado. Rocas bloquean; bosque y desnivel consumen más alcance. El control permanece aunque se vaya el constructor.
-4. Doce segundos después de la primera torre aparece una incursión visible desde el este. Puedes interceptarla, defender o abandonar la posición.
-5. Si la patrulla completa el saqueo destruye la torre y su zona de control. El emplazamiento se puede reconstruir.
+1. Arrastrar una tropa del patio del cuartel a una casilla azul para crear un escuadrón.
+2. Ordenarle llegar a uno de tres emplazamientos. Permanecer quieto allí construye una torre en seis segundos; salir pausa la construcción. Una torre en pie es un nuevo punto de despliegue.
+3. Doce segundos después de la primera torre se reúne una incursión visible en el este. Puedes interceptarla, defender o abandonar la posición.
+4. Si la patrulla completa el saqueo, la torre cae. El emplazamiento se puede reconstruir.
 
-El primer refuerzo llega a la reserva a los 25 segundos; después, cada 30 segundos, alternando lanceros, arqueros y caballería. La reserva admite 12 unidades. La selección directa de una celda de despliegue permite formar hasta cinco escuadrones o añadir miembros a uno detenido (máximo seis), junto al cuartel o a una torre asegurada y fuera de combate. Los refuerzos no se despliegan automáticamente. Las patrullas vuelven tras retirarse, con una pausa de 28 segundos. No hay pantallas de victoria, salto de misión ni final automático: puedes seguir expandiendo y defendiendo.
+Las tropas llegan al patio según la tierra que tienes, alternando lanceros, arqueros y caballería. El patio admite seis tropas. Se pueden formar hasta cinco escuadrones o añadir miembros a uno detenido (máximo seis), junto al cuartel o a una torre y fuera de combate. Los refuerzos no se despliegan automáticamente. Las patrullas vuelven tras retirarse, con una pausa de 28 segundos. No hay pantallas de victoria, salto de misión ni final automático: puedes seguir expandiendo y defendiendo.
 
-«Juego libre» conserva el escenario avanzado de tres frentes; «La frontera» vuelve a este inicio. La campaña por etapas anterior se mantiene en el código y en las pruebas, pero ya no es el flujo predeterminado. El módulo `src/tactics/outpost.ts` contiene construcción, influencia, llegadas y ciclo de incursiones.
-
-## Campaña por etapas anterior
-
-Cinco misiones con objetivo y cierre propios:
-
-1. **La primera orden:** una tropa, un puesto marcado. Llegar y mantenerlo tres segundos.
-2. **La primera incursión:** interceptar una patrulla y conservar suministros en la aldea.
-3. **La tropa adecuada:** tres composiciones y arqueros enemigos. Elegir el contraataque.
-4. **Los refuerzos:** desplegar desde el cuartel y conquistar el paso.
-5. **Los tres frentes:** sostener territorio y capturar el cuartel enemigo.
-
-Las primeras tres reciben pequeños grupos de refuerzo desde retaguardia: a los 12 segundos en la primera, y a los 18 y 43 segundos en las siguientes. Avanzan a un punto cercano de reunión; requieren órdenes para actuar. Las misiones posteriores usan los tiempos de preparación del cuartel y las columnas rivales. Las llegadas están limitadas para mantener legibilidad.
-
-Victoria y derrota detienen la misión y permiten avanzar o reintentar. Los números permiten repetir misiones desbloqueadas. Se guarda **el desbloqueo** en localStorage, no la posición de cada tropa: al recargar se inicia la misión desbloqueada más reciente. El juego funciona también si el navegador bloquea ese almacenamiento.
-
-Los controles de tipos/daño aparecen desde la tercera misión y el control territorial desde la cuarta. «Juego libre» abre el escenario avanzado; «Campaña» regresa al aprendizaje. `src/tactics/campaign.ts` contiene los objetivos, llegadas y condiciones de transición.
+«Juego libre» conserva el escenario avanzado de tres frentes; «La frontera» vuelve a este modo y «Campaña» regresa a la campaña. El módulo `src/tactics/outpost.ts` contiene construcción, llegadas y ciclo de incursiones.
 
 ## Escenario avanzado
 
@@ -70,8 +87,7 @@ npm run preview
 
 - Seleccionar un escuadrón y pulsar una celda, o arrastrarlo al destino.
 - La formación completa ocupa una celda. La punta azul indica el frente; escudos y lanzas están delante, arcos detrás.
-- Orientar (R): pulsar una dirección del mapa. La formación gira gradualmente.
-- Mantener: detiene las órdenes, terminando primero el paso en curso.
+- Los escuadrones giran solos hacia el enemigo. Para detener uno, toca su propia casilla.
 - Es posible cambiar destino en marcha. El nuevo recorrido empieza al finalizar el paso actual, sin saltos.
 - Arrastrar terreno desplaza la cámara. Rueda y botones +/− hacen zoom.
 - Espacio pausa; 1, 2 y 4 cambian velocidad; H encuadra el mapa; Escape cierra selección.
@@ -104,3 +120,33 @@ Antes de ampliar el sistema, revisar tamaño de celda, lectura de composición y
 ## Tres tipos y afinidades de daño
 
 Lanceros superan a caballería; caballería supera a arqueros; arqueros superan a lanceros. Cada ventaja aplica ×1,5 al daño a cohesión, el enfrentamiento desfavorable ×0,65 y el mismo tipo ×1. Las mezclas ponderan cada combinación por la proporción de integrantes; menos soldados infligen menos daño total. El panel de selección muestra las modificaciones a daño infligido y recibido frente a cada tipo puro. El cuartel permite elegir cuál desplegar. Esta iteración modifica daño y representación; alcance específico, carga y bonificaciones por flanqueo siguen pendientes.
+
+## Altura
+
+El relieve tiene tres niveles (llano, ▲15 y ▲30) y modifica el daño a cohesión por cada nivel de diferencia entre atacante y objetivo:
+
+| Tropa | Desde arriba | Cuesta arriba |
+|---|---|---|
+| Arqueros | +25 % | −20 % |
+| Lanceros | +10 % | — |
+| Caballería | +10 % | −20 % (pierde la carga) |
+
+Las mezclas promedian por integrante. En combate, un chevrón verde sobre la ficha marca la ventaja de altura y uno naranja la desventaja. Al seleccionar un escuadrón, el anillo verde o rojo sobre cada enemigo ya incluye la altura. La misión 3 de la campaña la enseña: la torre está en una loma y la incursión sube desde el camino. Código: `heightBonus` en `src/tactics/combat.ts`.
+
+## Lectura del mapa
+
+- Cada escuadrón es un bloque de seis casillas en formación, azul propio y rojo enemigo, con un icono por integrante. La muesca indica el frente; el anillo exterior, la cohesión.
+- Un choque tiñe las dos casillas y muestra una marca entre los contendientes; cada golpe deja un impacto y hace destellar la zona alcanzada.
+- Una incursión fuera de la vista aparece como flecha roja en el borde de la pantalla.
+- La tierra propia tiene un borde azul continuo; las casillas que un enemigo se está comiendo se ven en rojo. Las rocas forman una barrera visible.
+
+## Señales por interacción
+
+El mapa no usa textos para guiar: responde a lo que haces y a lo que ocurre (`src/tactics/guide.ts`).
+
+- **Siguiente paso:** late la casilla donde desplegar; luego, el escuadrón que espera; al seleccionarlo aparece la silueta de la torre que podría levantar. Al terminar una torre se iluminan las casillas desde donde ya se puede desplegar.
+- **Lectura del enemigo:** al seleccionar un escuadrón, cada enemigo muestra un anillo verde con chevrones hacia arriba si lo vences, o rojo hacia abajo si te vence, según el tipo que golpearías, el lado por el que llegarías y la altura. En combate, el mismo anillo indica cómo va el choque.
+- **Peligro:** la torre o el cuartel al que se dirige una incursión late en rojo si nadie lo cubre, y más rápido mientras lo saquean.
+- **Acontecimientos:** el panel de reserva destella al llegar una tropa; una torre que cae, o una obra abandonada, laten en rojo.
+
+Las casillas azules siempre despliegan mientras quede reserva; para mover un escuadrón a una de ellas, arrástralo. El menú indica si crea un «Nuevo escuadrón» o refuerza uno existente, y se cierra solo cuando la reserva se vacía.

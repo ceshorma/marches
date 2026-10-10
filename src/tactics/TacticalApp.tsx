@@ -1,6 +1,11 @@
 import { deploymentError } from "./outpost";
-import { missions } from "./campaign";
-import { composition, matchup, troopTypes, troopNames } from "./combat";
+import { missions, waveProgress } from "./campaign";
+import { FormationGrid } from "./Formation";
+import { TroopIcon } from "./icons";
+import { activeRaids } from "./model";
+import type { Battle } from "./model";
+import { held, upcoming } from "./outpost";
+import { composition, slotsOf, troopTypes, troopNames } from "./combat";
 import type { TroopType } from "./combat";
 import { useEffect, useState } from "react";
 import {
@@ -9,7 +14,6 @@ import {
   Plus,
   Minus,
   Focus,
-  RotateCw,
   Shield,
   X,
   RotateCcw,
@@ -22,7 +26,8 @@ export default function TacticalApp() {
   const s = useTactics(),
     [generation, setGeneration] = useState(0),
     [help, setHelp] = useState(false),
-    [recruitType, setRecruitType] = useState<TroopType>("shield");
+    [recruitType, setRecruitType] = useState<TroopType>("shield"),
+    [picked, setPicked] = useState<number | null>(null);
   const outpost = s.battle.outpost;
   const lesson = s.battle.lesson,
     mission = lesson ? missions[lesson.index] : null;
@@ -57,9 +62,6 @@ export default function TacticalApp() {
         e.preventDefault();
         useTactics.setState({ paused: !g.paused });
       }
-
-      if (e.key.toLowerCase() === "r" && g.selected)
-        useTactics.setState({ orienting: !g.orienting });
       if (e.key.toLowerCase() === "h")
         useTactics.setState({ focus: g.focus + 1, zoom: 1 });
       if (["1", "2", "4"].includes(e.key))
@@ -84,32 +86,30 @@ export default function TacticalApp() {
         <div className="brand">
           MARCHES
           <span>
-            {outpost
-              ? "LA FRONTERA"
-              : mission
-                ? `${s.missionIndex + 1} / 5 · ${mission.name.toUpperCase()}`
+            {mission
+              ? `${s.missionIndex + 1} / ${missions.length} · ${mission.name.toUpperCase()}`
+              : outpost
+                ? "LA FRONTERA"
                 : s.scenario === "fronts"
                   ? "ESCENARIO AVANZADO"
                   : "VALLE CLARO"}
           </span>
         </div>
         <div className="region">
-          {outpost
-            ? !s.battle.squads.length
-              ? "FORMA TU PRIMER ESCUADRÓN"
-              : s.battle.raid &&
-                  s.battle.raid.phase !== "gone" &&
-                  s.battle.raid.phase !== "retreat"
-                ? "DEFIENDE TUS TORRES"
-                : outpost.sites.some((site) => site.active)
-                  ? "EXTIENDE TU FRONTERA"
-                  : "LEVANTA UNA TORRE"
-            : mission
-              ? lesson?.status === "won"
-                ? mission.success.toUpperCase()
-                : lesson?.status === "lost"
-                  ? "REAGRUPA TUS FUERZAS"
-                  : mission.objective
+          {mission
+            ? lesson?.status === "won"
+              ? mission.success.toUpperCase()
+              : lesson?.status === "lost"
+                ? "REAGRUPA TUS FUERZAS"
+                : mission.objective
+            : outpost
+              ? !s.battle.squads.length
+                ? "FORMA TU PRIMER ESCUADRÓN"
+                : activeRaids(s.battle).some((r) => r.phase !== "retreat")
+                  ? "DEFIENDE TUS TORRES"
+                  : outpost.sites.some((site) => site.active)
+                    ? "EXTIENDE TU FRONTERA"
+                    : "LEVANTA UNA TORRE"
               : s.scenario === "fronts"
                 ? s.battle.sectors?.[4].owner === "ally"
                   ? "REFUERZOS RIVALES CORTADOS"
@@ -122,18 +122,16 @@ export default function TacticalApp() {
                     ? "ALDEA SAQUEADA"
                     : "PROTEGE LA ALDEA"}
           <span>
-            {outpost
-              ? s.battle.time < outpost.noticeUntil
-                ? outpost.notice
-                : !s.battle.squads.length
+            {mission
+              ? s.battle.time < 7
+                ? mission.hint
+                : ""
+              : outpost
+                ? !s.battle.squads.length
                   ? "Toca una celda azul junto al cuartel."
                   : !outpost.sites.some((site) => site.active)
                     ? "Lleva tu escuadrón a un emplazamiento marcado."
                     : "Las torres aseguran terreno. Tus tropas lo defienden."
-              : mission
-                ? lesson?.noticeUntil && s.battle.time < lesson.noticeUntil
-                  ? "Han llegado refuerzos"
-                  : mission.hint
                 : s.scenario === "fronts"
                   ? `${s.battle.sectors?.filter((s) => s.owner === "ally").length} / 5 sectores · ${s.battle.squads.length} escuadrones`
                   : s.battle.raid?.outcome === "protected"
@@ -146,6 +144,7 @@ export default function TacticalApp() {
                           ? "Combate · sostén la posición"
                           : "Una patrulla se aproxima"}
           </span>
+          {outpost && <Timeline battle={s.battle} />}
         </div>
         <div className="clock">
           <span>
@@ -175,9 +174,6 @@ export default function TacticalApp() {
           </button>
         </div>
       </header>
-      <div className="compass" aria-hidden="true">
-        N<span>↑</span>
-      </div>
       <div
         className={`squad-list ${s.battle.squads.length > 3 ? "expanded" : ""}`}
       >
@@ -212,88 +208,20 @@ export default function TacticalApp() {
             )}
             <span>{composition(unit)}</span>
           </div>
-          {(!lesson || lesson.index >= 2) &&
-            (!outpost || outpost.waves > 0) && (
-              <div
-                className="matchups"
-                aria-label="Afinidades de daño a cohesión"
-              >
-                <small>Daño a cohesión</small>
-                <div className="matchup-head">
-                  <span>Contra</span>
-                  <span>Inflige</span>
-                  <span>Recibe</span>
-                </div>
-                {troopTypes.map((t) => {
-                  const outgoing = matchup(unit.members, [t]),
-                    incoming = matchup([t], unit.members);
-                  return (
-                    <div key={t} className="matchup-row">
-                      <span>{troopNames[t]}</span>
-                      <b
-                        className={
-                          outgoing > 1
-                            ? "favorable"
-                            : outgoing < 1
-                              ? "unfavorable"
-                              : ""
-                        }
-                      >
-                        {Math.round((outgoing - 1) * 100) > 0 ? "+" : ""}
-                        {Math.round((outgoing - 1) * 100)}%
-                      </b>
-                      <b
-                        className={
-                          incoming > 1
-                            ? "unfavorable"
-                            : incoming < 1
-                              ? "favorable"
-                              : ""
-                        }
-                      >
-                        {Math.round((incoming - 1) * 100) > 0 ? "+" : ""}
-                        {Math.round((incoming - 1) * 100)}%
-                      </b>
-                    </div>
-                  );
-                })}
-              </div>
-            )}
-          <div
-            className="mini-formation"
-            aria-label="Formación orientada hacia la derecha"
-          >
-            {unit.members.map((m, i) => (
-              <i
-                key={i}
-                className={m}
-                style={{ gridColumn: i < 3 ? 2 : 1, gridRow: (i % 3) + 1 }}
-              />
-            ))}
-          </div>
-          {(!lesson || lesson.index >= 1) && (
-            <>
-              <button
-                disabled={unit.routing}
-                aria-label="Orientar escuadrón"
-                title="Orientar · R"
-                className={s.orienting ? "chosen" : ""}
-                onClick={() => useTactics.setState({ orienting: !s.orienting })}
-              >
-                <RotateCw size={20} />
-                <span>Orientar</span>
-              </button>
-              <button
-                disabled={unit.routing}
-                aria-label="Mantener posición"
-                className={unit.hold ? "chosen" : ""}
-                onClick={() => s.stop()}
-              >
-                <Shield size={20} />
-                <span>Mantener</span>
-              </button>
-            </>
-          )}
+          <FormationGrid
+            squad={unit}
+            picked={picked}
+            disabled={!!unit.engaged || unit.routing}
+            onSlot={(slot) => {
+              // Tap a member, then another slot, to reorder the formation.
+              if (picked === null) {
+                if (slotsOf(unit).includes(slot)) setPicked(slot);
+              } else {
+                if (slot !== picked) s.arrange(unit.id, picked, slot);
+                setPicked(null);
+              }
+            }}
+          />
           <button aria-label="Cerrar selección" onClick={() => s.select(null)}>
             <X size={17} />
           </button>
@@ -329,22 +257,12 @@ export default function TacticalApp() {
           </div>
         )}
       {outpost && (
-        <aside className="reserve-tray" aria-label="Tropas disponibles">
-          <small>Reserva</small>
-          {troopTypes.map((type) => (
-            <span
-              key={type}
-              title={troopNames[type]}
-              aria-label={`${troopNames[type]} disponibles: ${outpost.reserve[type]}`}
-              className={outpost.reserve[type] ? "" : "empty"}
-            >
-              <i className={`reserve-icon ${type}`}>
-                {type === "shield" ? "♜" : type === "bow" ? "⌁" : "♞"}
-              </i>
-              <b>{outpost.reserve[type]}</b>
-            </span>
-          ))}
-        </aside>
+        // The waiting troops are drawn around the fort; this is for screen readers.
+        <p className="sr-only" aria-live="polite">
+          {`Esperando en el cuartel: ${troopTypes
+            .map((t) => `${outpost.reserve[t]} ${troopNames[t].toLowerCase()}`)
+            .join(", ")}`}
+        </p>
       )}
       {s.selectedBase && s.battle.bases && (
         <section className="orders base-orders" aria-label="Cuartel">
@@ -414,9 +332,9 @@ export default function TacticalApp() {
           <strong>
             {lesson.status === "won"
               ? mission!.success
-              : lesson.index === 4
-                ? "El cuartel ha caído"
-                : "La aldea necesita otra oportunidad"}
+              : outpost?.fortSacked
+                ? "El cuartel ha sido saqueado"
+                : mission!.failure}
           </strong>
           <button
             onClick={() => {
@@ -427,8 +345,8 @@ export default function TacticalApp() {
           >
             {lesson.status === "lost"
               ? "Reintentar"
-              : lesson.index === 4
-                ? "Jugar libremente"
+              : lesson.index === missions.length - 1
+                ? "Jugar La frontera"
                 : "Siguiente misión"}{" "}
             →
           </button>
@@ -452,11 +370,6 @@ export default function TacticalApp() {
             </button>
           ))}
         </nav>
-      )}
-      {s.orienting && (
-        <div className="orientation-hint">
-          Señala hacia dónde mirar <span>Esc para cancelar</span>
-        </div>
       )}
       <div className="map-tools">
         <button
@@ -493,6 +406,18 @@ export default function TacticalApp() {
             <Plus size={17} />
           </button>
         )}
+        {s.scenario !== "campaign" && (
+          <button
+            className="scenario-switch"
+            aria-label="Abrir campaña"
+            onClick={() => {
+              s.openCampaign();
+              setGeneration((g) => g + 1);
+            }}
+          >
+            Campaña
+          </button>
+        )}
         <button
           className="scenario-switch"
           aria-label="Cambiar escenario"
@@ -501,7 +426,7 @@ export default function TacticalApp() {
             setGeneration((g) => g + 1);
           }}
         >
-          {s.scenario === "fronts" ? "La frontera" : "Juego libre"}
+          {s.scenario === "outpost" ? "Juego libre" : "La frontera"}
         </button>
         <button
           aria-label="Mostrar controles"
@@ -523,10 +448,13 @@ export default function TacticalApp() {
       </div>
       {help && (
         <aside className="controls">
+          <span>Arrastrar tropas del patio · desplegar</span>
           <span>Seleccionar + destino, o arrastrar escuadrón</span>
           <span>Arrastrar terreno · mover cámara</span>
           <span>Rueda · zoom</span>
-          <span>R · orientar &nbsp; Espacio · pausa &nbsp; H · centrar</span>
+          <span>
+            Espacio · pausa &nbsp; H · centrar &nbsp; 1 2 4 · velocidad
+          </span>
         </aside>
       )}
       {s.message && (
@@ -535,5 +463,59 @@ export default function TacticalApp() {
         </div>
       )}
     </main>
+  );
+}
+
+// Upcoming enemy waves and friendly arrivals slide towards «now» on the left.
+const SPAN = 60;
+function Timeline({ battle }: { battle: Battle }) {
+  const events = upcoming(battle).filter((e) => e.at <= SPAN);
+  const progress = waveProgress(battle);
+  const land = held(battle),
+    goal = battle.lesson ? missions[battle.lesson.index].goal : undefined,
+    // The bar runs a little past the goal so the mark sits inside it.
+    scale = goal ? goal * 1.25 : Math.max(20, land);
+  return (
+    <div className="timeline" aria-label="Próximos eventos">
+      <div
+        className={`land-meter ${goal && land >= goal ? "met" : ""}`}
+        aria-label={
+          goal
+            ? `Tierra ${land} de ${goal} casillas`
+            : `Tierra ${land} casillas`
+        }
+      >
+        <div className="bar">
+          <i style={{ width: `${Math.min(1, land / scale) * 100}%` }} />
+          {goal && <b style={{ left: `${(goal / scale) * 100}%` }} />}
+        </div>
+        <span>{goal ? `${land}/${goal}` : land}</span>
+      </div>
+      {progress && (
+        <div
+          className="wave-dots"
+          aria-label={`Oleadas ${progress.done} de ${progress.total}`}
+        >
+          {Array.from({ length: Math.min(progress.total, 14) }, (_, i) => (
+            <i key={i} className={i < progress.done ? "done" : ""} />
+          ))}
+        </div>
+      )}
+      <div className="track">
+        <div className="now" />
+        {events.map((e, i) => (
+          <div
+            key={i}
+            className={`event ${e.kind}`}
+            style={{ left: `${(e.at / SPAN) * 100}%` }}
+            title={`${e.kind === "enemy" ? "Incursión" : "Refuerzo"} en ${Math.ceil(e.at)} s`}
+          >
+            {e.units.map((u, k) => (
+              <TroopIcon key={k} type={u} size={13} />
+            ))}
+          </div>
+        ))}
+      </div>
+    </div>
   );
 }
