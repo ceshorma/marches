@@ -1,4 +1,4 @@
-import { matchup, slotsOf, zoneSlots } from "./combat";
+import { slotsOf, zoneSlots } from "./combat";
 import type { TroopType } from "./combat";
 import { iconPaths } from "./icons";
 import * as art from "./art";
@@ -11,10 +11,9 @@ import {
   eaten,
   gathering,
   queue,
-  upcoming,
   waiting as waitingCount,
 } from "./outpost";
-import { guide } from "./guide";
+import { clash, guide, reasons } from "./guide";
 import type { Tone } from "./guide";
 import { useEffect, useRef } from "react";
 import { Application, Container, Graphics, Text } from "pixi.js";
@@ -61,6 +60,9 @@ function text(
   parent.addChild(t);
 }
 const ENEMY = 0xb4544b,
+  GOOD = 0x3f7f4f,
+  // Clan del Humo tokens: soot, with the notch and cohesion ring in ember red.
+  CLAN = art.P.soot,
   CREAM = 0xf4f0e3;
 // Icon paths (M, L, Q, Z) parsed once and drawn upright at any position.
 type Cmd = [string, ...number[]];
@@ -131,13 +133,14 @@ function token(
     x + a * c - b * d,
     y + a * d + b * c,
   ];
+  const accent = color === CLAN ? ENEMY : color;
   const cohesion = s.cohesion ?? 100,
     faded = s.routing ? 0.55 : 1,
     slots = slotsOf(s),
     hitZone = flash > 0 && s.lastZone ? zoneSlots[s.lastZone] : [];
   g.ellipse(x + 1.5, y + 4, 26, 22).fill({ color: INK, alpha: 0.1 * alpha });
   g.poly([...point(31, 0), ...point(23, 6), ...point(23, -6)]).fill({
-    color,
+    color: accent,
     alpha: alpha * faded,
   });
   if (alpha > 0.5) {
@@ -150,7 +153,7 @@ function token(
         -Math.PI / 2,
         -Math.PI / 2 + (Math.PI * 2 * Math.max(0.5, cohesion)) / 100,
       )
-      .stroke({ color: cohesion < 30 ? 0xc0913f : color, width: 3 });
+      .stroke({ color: cohesion < 30 ? 0xc0913f : accent, width: 3 });
   }
   const disorder = Math.max(0, 1 - cohesion / 60);
   for (let slot = 0; slot < 6; slot++) {
@@ -1001,6 +1004,17 @@ export default function Board() {
                   )
                   .stroke({ color: BLUE, width: 2.5, alpha: 0.75 });
               });
+            // Raiders' tracks: where they came through, fading slowly.
+            const trodden = b.outpost.tracks?.[c.id] ?? 0;
+            if (trodden > 0.03 && !built.has(c.id))
+              art.tracks(
+                territory,
+                c.x,
+                c.y,
+                b.outpost.trackDir?.[c.id] ?? 0,
+                trodden,
+                c.id,
+              );
             // Lived-in ground: fields first, then a house on some cells.
             if (people > 0.25 && !built.has(c.id))
               art.homestead(
@@ -1114,7 +1128,9 @@ export default function Board() {
           if (raid.phase !== "gone") {
             const e = raid.troop,
               p = squadPosition(b, e);
-            token(overlay, e, p.x, p.y, e.facing, 1, ENEMY, flashOf(e));
+            token(overlay, e, p.x, p.y, e.facing, 1, CLAN, flashOf(e));
+            // Each raid marches under the clan's standard.
+            art.clanBanner(overlay, p.x + 20, p.y - 14, 30, 1, b.time);
             // Raiders heading home carry their loot: still worth catching.
             if (raid.outcome === "raided") {
               art.sack(overlay, p.x - 14, p.y - 14);
@@ -1170,16 +1186,82 @@ export default function Board() {
               .fill({ color: 0xc8615a, alpha: 0.1 + pulse });
           const mx = (p.x + q.x) / 2,
             my = (p.y + q.y) / 2;
+          // The crossed swords take the colour of whoever is winning.
+          const ally = b.squads.find((x) => x === u || x === foe),
+            other = ally === u ? foe : u,
+            side = ally ? clash(b, ally, other) : null,
+            fill = side === "good" ? GOOD : side === "danger" ? ENEMY : CREAM,
+            mark = side ? CREAM : INK,
+            grow = side ? 2 + pulse * 25 : 0;
           overlay
-            .circle(mx, my, 9)
-            .fill({ color: CREAM, alpha: 0.9 })
-            .stroke({ color: INK, width: 1, alpha: 0.5 });
+            .circle(mx, my, 9 + grow)
+            .fill({ color: fill, alpha: 0.95 })
+            .stroke({
+              color: side ? CREAM : INK,
+              width: side ? 2 : 1,
+              alpha: side ? 1 : 0.5,
+            });
           overlay
             .moveTo(mx - 5, my - 5)
             .lineTo(mx + 5, my + 5)
             .moveTo(mx + 5, my - 5)
             .lineTo(mx - 5, my + 5)
-            .stroke({ color: INK, width: 2 });
+            .stroke({ color: mark, width: 2 });
+          // Beside the swords, on each side's half, why it is winning: the
+          // troop that beats who it hits, the high ground, a blow on the flank.
+          if (ally && other)
+            for (const [att, tgt, colour] of [
+              [ally, other, BLUE],
+              [other, ally, CLAN],
+            ] as const) {
+              const why = reasons(b, att, tgt),
+                from = squadPosition(b, att),
+                len = Math.hypot(from.x - mx, from.y - my) || 1,
+                ux = (from.x - mx) / len,
+                uy = (from.y - my) / len;
+              const glyphs: ((x: number, y: number) => void)[] = [];
+              if (why.troop) {
+                const type = why.troop;
+                glyphs.push((x, y) => icon(overlay, type, x, y, 10, CREAM));
+              }
+              if (why.height)
+                glyphs.push((x, y) =>
+                  overlay
+                    .poly([x - 4.5, y + 3.5, x, y - 4, x + 4.5, y + 3.5])
+                    .fill(CREAM),
+                );
+              if (why.side)
+                glyphs.push((x, y) =>
+                  overlay
+                    .arc(x, y, 3.8, Math.PI * 0.9, Math.PI * 2.2)
+                    .stroke({
+                      color: CREAM,
+                      width: why.exposed ? 2.4 : 1.5,
+                      cap: "round",
+                    })
+                    .poly([
+                      x + 4.6,
+                      y + 3.6,
+                      x + 1.2,
+                      y + 3.2,
+                      x + 3.8,
+                      y + 0.4,
+                    ])
+                    .fill(CREAM),
+                );
+              glyphs.forEach((draw, k) => {
+                // Out to the side of the line between foes (each side its
+                // own way), leaning towards whoever holds the advantage.
+                const out = 21 + k * 15,
+                  x = mx + ux * 6 - uy * out,
+                  y = my + uy * 6 + ux * out;
+                overlay
+                  .roundRect(x - 6.5, y - 6.5, 13, 13, 3)
+                  .fill(colour)
+                  .stroke({ color: CREAM, width: 1 });
+                draw(x, y);
+              });
+            }
         }
         for (const hit of b.strikes ?? []) {
           const t = Math.min(1, (b.time - hit.time) / 0.45),
@@ -1372,22 +1454,12 @@ export default function Board() {
           for (const g of gathering(b)) {
             const c = b.cells[g.from],
               shown = Math.max(1, Math.ceil(g.progress * g.units.length));
-            overlay
-              .circle(c.x, c.y, 30)
-              .stroke({ color: ENEMY, width: 2, alpha: 0.25 });
-            overlay
-              .moveTo(c.x, c.y - 30)
-              .arc(
-                c.x,
-                c.y,
-                30,
-                -Math.PI / 2,
-                -Math.PI / 2 + g.progress * Math.PI * 2,
-              )
-              .stroke({
-                color: ENEMY,
-                width: 3 + (g.progress > 0.75 ? beat * 2 : 0),
-              });
+            // A war camp rises: fire and smoke, tents, then the standard.
+            art.warCamp(overlay, c.x, c.y, g.progress, b.time);
+            if (g.progress > 0.75)
+              overlay
+                .circle(c.x, c.y, 34 + beat * 3)
+                .stroke({ color: ENEMY, width: 2, alpha: 0.25 + beat * 0.3 });
             g.units.slice(0, shown).forEach((unit, k) => {
               const x = c.x + ((k % 3) - 1) * 17,
                 y =
@@ -1395,7 +1467,7 @@ export default function Board() {
                   (Math.floor(k / 3) - (g.units.length > 3 ? 0.5 : 0)) * 17;
               overlay
                 .roundRect(x - 7.5, y - 7.5, 15, 15, 3.5)
-                .fill(ENEMY)
+                .fill(CLAN)
                 .stroke({ color: CREAM, width: 1.2 });
               icon(overlay, unit, x, y, 12, CREAM);
             });
@@ -1434,10 +1506,9 @@ export default function Board() {
                 .fill({ color: BLUE, alpha: near ? 0.2 : 0.06 + beat * 0.06 })
                 .stroke({ color: BLUE, width: near ? 3 : 2, alpha: 0.7 });
             }
-            // The troop reads green or red against the next wave.
-            const next = upcoming(b).find((e) => e.kind === "enemy");
-            const edge = next ? matchup([handType], next.units) : 1;
-            const ring = edge > 1.1 ? 0x3f7f4f : edge < 0.9 ? ENEMY : BLUE;
+            // No verdict on the troop in hand: whether it was a good choice
+            // shows in the fight (see the clash badges).
+            const ring = BLUE;
             const g = yard();
             if (!drag) {
               const spot = spots[heldIndex];

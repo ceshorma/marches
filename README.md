@@ -26,10 +26,12 @@ El modelo está en `src/tactics/outpost.ts` (`updateLand`, `held`, `eaten`, `set
 Como en Mini Metro, la presión se acumula en el mapa donde ocurre:
 
 - **Tropas esperando.** Los refuerzos llegan al patio junto al cuartel (a su oeste, fuera del anillo de despliegue) y esperan ahí, a la vista. Caben seis: el borde del patio pasa de azul a ámbar cuando queda un sitio y a rojo, latiendo, cuando está lleno. Una tropa que llega con el patio lleno se retira y se pierde.
-- **Lo que tocas primero decide el verbo.** Desplegar empieza siempre en el patio: arrastra una tropa a una casilla azul libre (escuadrón nuevo) o sobre un escuadrón que puede reforzarse donde está (se ilumina entero); o tócala para tomarla en la mano (anillo ámbar) y toca después el destino. Con una tropa en la mano se iluminan los destinos válidos y la tropa lleva un anillo verde o rojo según cómo le iría contra la próxima oleada; tocar otro sitio la devuelve. Mover empieza siempre en un escuadrón: selecciónalo y toca cualquier casilla, azul o no. En reposo las casillas azules apenas se marcan, y el patio late cuando desplegar es el siguiente paso.
+- **Lo que tocas primero decide el verbo.** Desplegar empieza siempre en el patio: arrastra una tropa a una casilla azul libre (escuadrón nuevo) o sobre un escuadrón que puede reforzarse donde está (se ilumina entero); o tócala para tomarla en la mano (anillo ámbar) y toca después el destino. Con una tropa en la mano se iluminan los destinos válidos; tocar otro sitio la devuelve. Mover empieza siempre en un escuadrón: selecciónalo y toca cualquier casilla, azul o no. En reposo las casillas azules apenas se marcan, y el patio late cuando desplegar es el siguiente paso.
 - **Huecos visibles.** Las posiciones vacías de cada escuadrón se dibujan como casillas con borde.
 - **El enemigo no huye.** Una incursión que pierde la cohesión en combate queda destruida donde está: sus hombres se dispersan y en el suelo quedan lanzas rotas y su estandarte caído durante un rato. Sus armas equipan una tropa más del tipo que más traía, que camina desde el campo de batalla hasta el patio. Solo vuelven a casa los que ya saquearon, cargando sacos de botín, y aún se les puede dar alcance por el camino.
-- **La oleada se reúne.** Durante sus últimos 15 segundos, la próxima incursión se va juntando a la vista en su punto de entrada, con un anillo rojo que se llena; al completarse, sale. Si está fuera de la pantalla, una flecha en el borde lo indica.
+- **El Clan del Humo.** El enemigo tiene cara: fichas de hollín con el frente y la cohesión en rojo brasa, y cada incursión marcha bajo su estandarte (tela negra con una voluta de humo que nace de una brasa).
+- **La oleada se reúne.** Durante sus últimos 15 segundos, la próxima incursión levanta un campamento a la vista en su punto de entrada: primero el fuego y su humo, después las tiendas una a una y por último el estandarte; al completarse, sale. Si está fuera de la pantalla, una flecha en el borde lo indica.
+- **Huellas.** Las incursiones dejan rastro en las casillas por las que pasan, orientado según su marcha, y tarda un par de minutos en borrarse: el mapa recuerda por dónde vienen.
 
 ## Formación
 
@@ -142,8 +144,8 @@ Las mezclas promedian por integrante. En combate, un chevrón verde sobre la fic
 
 ## Lectura del mapa
 
-- Cada escuadrón es un bloque de seis casillas en formación, azul propio y rojo enemigo, con un icono por integrante. La muesca indica el frente; el anillo exterior, la cohesión.
-- Un choque tiñe las dos casillas y muestra una marca entre los contendientes; cada golpe deja un impacto y hace destellar la zona alcanzada.
+- Cada escuadrón es un bloque de seis casillas en formación, azul propio y hollín enemigo, con un icono por integrante. La muesca indica el frente; el anillo exterior, la cohesión.
+- Un choque tiñe las dos casillas y muestra unas espadas cruzadas entre los contendientes, del color de quien va ganando: verde si tú, rojo si ellos, neutras si está parejo. A cada lado, en el color de cada bando, aparece por qué: el icono de la tropa que vence a quien golpea (ventaja de tropa), ▲ si ataca desde más alto y una flecha curva si golpea por el flanco o la retaguardia (más gruesa si ese lado está vacío). Como el «súper eficaz» de los RPG: se ve como consecuencia, no como instrucción. Cada golpe deja un impacto y hace destellar la zona alcanzada.
 - Una incursión fuera de la vista aparece como flecha roja en el borde de la pantalla.
 - La tierra propia tiene un borde azul continuo; las casillas que un enemigo se está comiendo se ven en rojo. Las rocas forman una barrera visible.
 
@@ -152,7 +154,7 @@ Las mezclas promedian por integrante. En combate, un chevrón verde sobre la fic
 El mapa no usa textos para guiar: responde a lo que haces y a lo que ocurre (`src/tactics/guide.ts`).
 
 - **Siguiente paso:** late el patio cuando toca desplegar; luego, el escuadrón que espera; al seleccionarlo aparece la silueta de la torre que podría levantar. Al terminar una torre vuelve a latir el patio: ya se puede desplegar también junto a ella.
-- **Lectura del enemigo:** al seleccionar un escuadrón, cada enemigo muestra un anillo verde con chevrones hacia arriba si lo vences, o rojo hacia abajo si te vence, según el tipo que golpearías, el lado por el que llegarías y la altura. En combate, el mismo anillo indica cómo va el choque.
+- **Lectura del enemigo:** al seleccionar un escuadrón, cada enemigo cercano (a unas tres casillas) muestra un anillo verde con chevrones hacia arriba si lo vences, o rojo hacia abajo si te vence, según el tipo que golpearías, el lado por el que llegarías y la altura. En combate, el mismo anillo indica cómo va el choque.
 - **Peligro:** la torre o el cuartel al que se dirige una incursión late en rojo si nadie lo cubre, y más rápido mientras lo saquean.
 - **Acontecimientos:** el panel de reserva destella al llegar una tropa; una torre que cae, o una obra abandonada, laten en rojo.
 

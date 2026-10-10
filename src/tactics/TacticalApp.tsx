@@ -12,7 +12,6 @@ import {
   Plus,
   Minus,
   Focus,
-  Shield,
   X,
   RotateCcw,
   Menu,
@@ -194,26 +193,6 @@ export default function TacticalApp() {
           </button>
         </div>
       </header>
-      <div
-        className={`squad-list ${s.battle.squads.length > 3 ? "expanded" : ""}`}
-      >
-        {s.battle.squads.map((u, i) => (
-          <button
-            key={u.id}
-            aria-label={`Seleccionar ${u.name}`}
-            className={s.selected === u.id ? "chosen" : ""}
-            onClick={() => {
-              s.select(u.id);
-            }}
-          >
-            <Shield size={17} />
-            <span>
-              {["I", "II", "III", "IV", "V", "VI", "VII", "VIII", "IX"][i]}
-            </span>
-            <small>{u.members.length}/6</small>
-          </button>
-        ))}
-      </div>
       {unit ? (
         <section className="orders" aria-label="Órdenes de escuadrón">
           <div className="unit-title">

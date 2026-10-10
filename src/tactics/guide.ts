@@ -1,7 +1,14 @@
 import { heightBonus, matchup, struck, zoneFrom } from "./combat";
 import type { TroopType } from "./combat";
 import { deploymentError } from "./outpost";
-import { activeRaids, adjacent, allTroops, rise, squadPosition } from "./model";
+import {
+  activeRaids,
+  adjacent,
+  allTroops,
+  DX,
+  rise,
+  squadPosition,
+} from "./model";
 import type { Battle, Squad } from "./model";
 // Interaction signals: no words on the map. The board answers what the player
 // does (selecting, hovering) and what just happened with marks on cells and
@@ -21,8 +28,37 @@ export function edge(b: Battle, a: Squad, t: Squad): number {
     heightBonus(a.members, rise(b, a, t))
   );
 }
+// Why a strike from `a` at `t` goes well, read after the fact: the troop
+// that beats whoever it hits, the higher ground, a blow on the flank or rear
+// (harder still when that side is empty).
+export type Reasons = {
+  troop?: TroopType;
+  height: boolean;
+  side?: "flank" | "rear";
+  exposed: boolean;
+};
+export function reasons(b: Battle, a: Squad, t: Squad): Reasons {
+  const p = squadPosition(b, a),
+    q = squadPosition(b, t),
+    zone = zoneFrom(t.facing, p, q),
+    hit = struck(t, zone);
+  const best = [...new Set(a.members)]
+    .map((type) => [type, matchup([type], hit.members)] as const)
+    .sort((x, y) => y[1] - x[1])[0];
+  return {
+    troop: best && best[1] > 1.1 ? best[0] : undefined,
+    height: heightBonus(a.members, rise(b, a, t)) > 1.05,
+    side: zone === "front" ? undefined : zone === "rear" ? "rear" : "flank",
+    exposed: hit.exposed,
+  };
+}
+// How near (world units, about three cells) an enemy must be to be read.
+export const READ_RANGE = DX * 3.2;
 const tone = (value: number) =>
   value > 1.1 ? "good" : value < 0.9 ? "danger" : null;
+// Who has the upper hand in a fight between one of yours and a foe.
+export const clash = (b: Battle, ally: Squad, foe: Squad) =>
+  tone(edge(b, ally, foe) / edge(b, foe, ally));
 export function guide(
   b: Battle,
   ui: { selected: string | null; held: TroopType | null },
@@ -36,9 +72,13 @@ export function guide(
   const raids = activeRaids(b).filter((r) => r.phase !== "retreat");
   const selected = b.squads.find((u) => u.id === ui.selected);
 
-  // Readings: select a squad and every enemy shows whether you beat it.
+  // Readings: select a squad and enemies close by show whether you beat
+  // them. Only close by: from afar you have to work it out yourself.
   if (selected)
     for (const r of raids) {
+      const p = squadPosition(b, selected),
+        q = squadPosition(b, r.troop);
+      if (Math.hypot(p.x - q.x, p.y - q.y) > READ_RANGE) continue;
       const t = tone(edge(b, selected, r.troop) / edge(b, r.troop, selected));
       if (t) readings.push({ id: r.troop.id, tone: t });
     }
@@ -47,7 +87,7 @@ export function guide(
       ? allTroops(b).find((t) => t.id === u.engaged)
       : undefined;
     if (!foe) continue;
-    const t = tone(edge(b, u, foe) / edge(b, foe, u));
+    const t = clash(b, u, foe);
     if (t) readings.push({ id: u.id, tone: t });
   }
 

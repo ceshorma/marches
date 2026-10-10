@@ -135,6 +135,9 @@ export type Battle = {
     // last caught fire.
     settled?: number[];
     burning?: number[];
+    // Raiders' tracks on each cell (1 fresh → 0 gone) and their heading.
+    tracks?: number[];
+    trackDir?: number[];
     // Progress towards the next troop earned by held land.
     harvest?: number;
     // Arrivals lost because the fort was full.

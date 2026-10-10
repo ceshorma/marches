@@ -1,5 +1,9 @@
 # TODO
 
+## Siguiente
+
+- [ ] Que se note si una tropa quedó bien o mal puesta, y si un escuadrón está bien armado (por discutir).
+
 ## Assets pendientes
 
 Mismo estilo que `src/tactics/art.ts`: mapa de campaña visto desde arriba, colores planos de la paleta `P`, trazo de tinta suave y sombra ligera. Cada asset nuevo se añade también a la hoja `?sheet` para revisarlo.
@@ -27,9 +31,9 @@ Mismo estilo que `src/tactics/art.ts`: mapa de campaña visto desde arriba, colo
 - [ ] Torre dañada antes de caer (grietas, almenas rotas).
 
 ### Enemigo
-- [ ] Estandarte e identidad propia del Clan del Humo (color ceniza, emblema).
-- [ ] Campamento que crece mientras se reúne una oleada.
-- [ ] Huellas o rastro de las incursiones sobre el terreno.
+- [x] Estandarte e identidad propia del Clan del Humo (color ceniza, emblema).
+- [x] Campamento que crece mientras se reúne una oleada.
+- [x] Huellas o rastro de las incursiones sobre el terreno.
 
 ### Ambiente
 - [ ] Pájaros que levantan el vuelo cuando se acerca una incursión.

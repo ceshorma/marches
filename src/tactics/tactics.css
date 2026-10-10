@@ -110,25 +110,7 @@ button:focus-visible {
   width: 39px;
   height: 39px;
 }
-.squad-list {
-  position: absolute;
-  left: 26px;
-  top: 45%;
-  display: flex;
-  flex-direction: column;
-  gap: 9px;
-}
-.squad-list button {
-  padding: 12px;
-  background: #f5f3ece8;
-  border: 1px solid #d3d5c6;
-  border-radius: 4px;
-  color: #397cac;
-}
-.squad-list small {
-  font-size: 10px;
-  color: #91988b;
-}
+
 .tactical-game .chosen {
   background: #dce5e3;
   border-color: #8aa9b1;
@@ -258,13 +240,7 @@ button:focus-visible {
   .unit-title span {
     font-size: 9px;
   }
-  .squad-list {
-    left: 12px;
-    top: 130px;
-  }
-  .squad-list button {
-    padding: 8px;
-  }
+
   .quiet-hint {
     bottom: 90px;
     font-size: 10px;
@@ -294,17 +270,8 @@ button:focus-visible {
     font-size: 10px;
     margin-top: 7px;
   }
-  .squad-list {
-    top: 155px;
-  }
 }
-.squad-list.expanded {
-  top: 25%;
-  gap: 5px;
-}
-.squad-list.expanded button {
-  padding: 9px;
-}
+
 .sector-strip {
   position: absolute;
   bottom: 27px;
@@ -372,18 +339,6 @@ button:focus-visible {
   }
 }
 @media (max-width: 700px) {
-  .squad-list.expanded {
-    top: 160px;
-    gap: 4px;
-  }
-  .squad-list.expanded button {
-    min-height: 30px;
-    padding: 5px;
-    font-size: 10px;
-  }
-  .squad-list.expanded small {
-    display: none;
-  }
   .sector-strip {
     max-width: 96vw;
     flex-wrap: wrap;
@@ -493,11 +448,6 @@ button:focus-visible {
     font-size: 17px;
   }
 }
-@media (max-width: 700px) {
-  .squad-list {
-    top: 215px;
-  }
-}
 
 /* Feedback stays local to the interaction. */
 .tactical-game button {
@@ -544,10 +494,7 @@ button:focus-visible {
   font-size: 12px;
   color: #6f7a6c;
 }
-.orders button span,
-.squad-list small {
-  font-size: 11px;
-}
+
 /* Mission steps sit in their own tray instead of floating over the map. */
 .campaign-steps {
   padding: 4px;
@@ -584,10 +531,6 @@ button:focus-visible {
   /* Leave room for a two-line hint under the objective. */
   .campaign-steps {
     top: 178px;
-  }
-  .squad-list,
-  .squad-list.expanded {
-    top: 236px;
   }
 }
 
@@ -719,10 +662,6 @@ button:focus-visible {
   }
   .campaign-steps {
     top: 206px;
-  }
-  .squad-list,
-  .squad-list.expanded {
-    top: 250px;
   }
 }
 /* Land: cells held against the mission goal. */
@@ -940,10 +879,7 @@ button:focus-visible {
   .region {
     top: 44px;
   }
-  .squad-list,
-  .squad-list.expanded {
-    top: 158px;
-  }
+
   .menu-backdrop {
     padding: 64px 12px 12px;
   }
@@ -965,10 +901,7 @@ button:focus-visible {
   .region {
     top: 60px;
   }
-  .squad-list,
-  .squad-list.expanded {
-    top: 170px;
-  }
+
   .track {
     width: 170px;
   }

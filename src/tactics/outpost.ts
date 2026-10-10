@@ -377,6 +377,7 @@ export function updateOutpost(b: Battle, dt: number) {
         ? b.time + o.raids.interval
         : Infinity;
   updateLand(b, dt);
+  updateTracks(b, dt);
   if (o.camp && !o.camp.taken) updateCamp(b, o.camp, dt);
   if (o.script) {
     if (!o.camp?.taken) runScript(b);
@@ -397,6 +398,26 @@ export function updateOutpost(b: Battle, dt: number) {
       })
     )
       o.nextRaid = Infinity;
+  }
+}
+// Raiders leave tracks where they pass; they fade over a couple of minutes,
+// so the map remembers where raids come from.
+export const TRACKS_FADE = 150;
+function updateTracks(b: Battle, dt: number) {
+  const o = b.outpost!;
+  o.tracks ??= b.cells.map(() => 0);
+  o.trackDir ??= b.cells.map(() => 0);
+  for (let id = 0; id < o.tracks.length; id++)
+    if (o.tracks[id] > 0)
+      o.tracks[id] = Math.max(0, o.tracks[id] - dt / TRACKS_FADE);
+  for (const r of live(b)) {
+    const e = r.troop;
+    if (!e.path.length) continue;
+    o.tracks[e.cell] = 1;
+    o.trackDir[e.cell] = Math.atan2(
+      b.cells[e.path[0]].y - b.cells[e.cell].y,
+      b.cells[e.path[0]].x - b.cells[e.cell].x,
+    );
   }
 }
 // Holding the rival camp, uncontested and next to a secured tower, ends the raids.

@@ -27,6 +27,10 @@ export const P = {
   ally: 0x326f97,
   enemy: 0xb4544b,
   enemyDark: 0x8b3a33,
+  // Clan del Humo: soot cloth, ash-white smoke, an ember at its root.
+  soot: 0x4a423e,
+  sootDark: 0x342e2b,
+  ashLight: 0xd8d1c4,
   tent: 0xc79a82,
   tentDark: 0xa57461,
   flame: 0xe0682f,
@@ -82,6 +86,42 @@ function banner(
   ])
     .fill({ color, alpha })
     .stroke(line(alpha, 0.8));
+}
+// The Clan del Humo's standard: soot cloth with a curl of smoke rising
+// from an ember. Long and ragged, unlike the neat pennants of the march.
+export function clanBanner(
+  g: Graphics,
+  x: number,
+  y: number,
+  h = 26,
+  alpha = 1,
+  t = 0,
+) {
+  g.moveTo(x, y)
+    .lineTo(x, y - h)
+    .stroke({ color: P.woodDark, width: 1.6, alpha });
+  const wave = Math.sin(t * 2.4) * 1.5;
+  g.poly([
+    x,
+    y - h,
+    x + 12,
+    y - h + 1 + wave,
+    x + 11,
+    y - h + 14 + wave,
+    x + 8,
+    y - h + 11,
+    x + 5,
+    y - h + 15,
+    x,
+    y - h + 12,
+  ])
+    .fill({ color: P.soot, alpha })
+    .stroke(line(alpha, 0.8));
+  g.moveTo(x + 5, y - h + 10)
+    .quadraticCurveTo(x + 2.5, y - h + 7, x + 5.5, y - h + 5)
+    .quadraticCurveTo(x + 8.5, y - h + 3, x + 6, y - h + 1.8)
+    .stroke({ color: P.ashLight, width: 1.3, alpha, cap: "round" });
+  g.circle(x + 5, y - h + 11, 1.4).fill({ color: P.flame, alpha });
 }
 
 // ── Nature ────────────────────────────────────────────────────────────────
@@ -487,7 +527,67 @@ export function camp(g: Graphics, x: number, y: number, t = 0) {
   }
   g.circle(x + 2, y + 2, 2.5).fill(P.flameLight);
   smoke(g, x + 2, y + 2, t, 0.5);
-  banner(g, x - 18, y + 6, 26, P.enemy);
+  clanBanner(g, x - 18, y + 6, 26, 1, t);
+}
+// A war camp of the Clan del Humo rising where a wave gathers (k: 0 → 1).
+// First a fire and its smoke, then tents one by one, last the standard.
+export function warCamp(
+  g: Graphics,
+  x: number,
+  y: number,
+  k: number,
+  t: number,
+) {
+  const tent = (tx: number, ty: number, s: number, a: number) => {
+    shadow(g, tx + 1, ty + 2, 9 * s, 6 * s, a);
+    g.poly([tx - 9 * s, ty + 6 * s, tx, ty - 8 * s, tx + 9 * s, ty + 6 * s])
+      .fill({ color: P.soot, alpha: a })
+      .stroke(line(a, 1));
+    g.poly([tx, ty - 8 * s, tx + 9 * s, ty + 6 * s, tx, ty + 6 * s]).fill({
+      color: P.sootDark,
+      alpha: a,
+    });
+  };
+  const rise = (from: number) => Math.min(1, Math.max(0, (k - from) / 0.12));
+  g.ellipse(x, y + 4, 30, 20).fill({
+    color: P.ash,
+    alpha: 0.12 * Math.min(1, k * 3),
+  });
+  if (rise(0.2)) tent(x - 20, y - 12, 0.9, rise(0.2));
+  if (rise(0.45)) tent(x + 20, y - 14, 0.85, rise(0.45));
+  if (rise(0.7)) tent(x + 22, y + 14, 0.8, rise(0.7));
+  for (let i = 0; i < 6; i++) {
+    const a = (i * Math.PI) / 3;
+    g.circle(x - 20 + Math.cos(a) * 4, y + 14 + Math.sin(a) * 3, 1.2).fill(
+      P.stoneDark,
+    );
+  }
+  g.circle(x - 20, y + 14, 2 + k * 1.5).fill(P.flame);
+  g.circle(x - 20, y + 13, 1 + k).fill(P.flameLight);
+  // The smoke thickens as the wave grows: seen from far before it sets out.
+  smoke(g, x - 20, y + 12, t, 0.5 + k);
+  smoke(g, x - 18, y + 6, t + 0.37, 0.3 + k * 0.7);
+  if (k > 0.85) clanBanner(g, x - 30, y + 2, 30, rise(0.85), t);
+}
+// Raiders' tracks across a cell, along the way they went (fades with k).
+export function tracks(
+  g: Graphics,
+  x: number,
+  y: number,
+  dir: number,
+  k: number,
+  seed = 0,
+) {
+  const c = Math.cos(dir),
+    d = Math.sin(dir);
+  for (let i = -3; i <= 3; i++)
+    for (const side of [-1, 1]) {
+      const along = i * 9 + (side > 0 ? 4 : 0) + rnd(seed, i + 5) * 2,
+        across = side * (4 + rnd(seed, i * side + 9) * 2),
+        px = x + along * c - across * d,
+        py = y + along * d + across * c;
+      g.ellipse(px, py, 2, 1.4).fill({ color: P.ash, alpha: 0.5 * k });
+    }
 }
 
 // ── Battle ────────────────────────────────────────────────────────────────
@@ -524,7 +624,7 @@ export function fallen(g: Graphics, x: number, y: number, k: number, seed = 0) {
     x + 4,
     y + 2,
   ])
-    .fill({ color: P.enemy, alpha: 0.85 * k })
+    .fill({ color: P.soot, alpha: 0.85 * k })
     .stroke(line(k, 0.8));
 }
 // The moment a raid breaks: its men scatter outward and fade (t = 0 → 1).
@@ -534,7 +634,7 @@ export function rout(g: Graphics, x: number, y: number, t: number, n = 6) {
     const a = (i / n) * Math.PI * 2 + 0.4,
       d = 6 + e * 26;
     g.circle(x + Math.cos(a) * d, y + Math.sin(a) * d, 3.2 * (1 - t * 0.5))
-      .fill({ color: P.enemy, alpha: 1 - t })
+      .fill({ color: P.soot, alpha: 1 - t })
       .stroke({ color: P.ink, width: 0.8, alpha: 0.7 * (1 - t) });
   }
   g.circle(x, y, 10 + e * 30).stroke({
