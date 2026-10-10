@@ -529,8 +529,9 @@ export function camp(g: Graphics, x: number, y: number, t = 0) {
   smoke(g, x + 2, y + 2, t, 0.5);
   clanBanner(g, x - 18, y + 6, 26, 1, t);
 }
-// A war camp of the Clan del Humo rising where a wave gathers (k: 0 → 1).
-// First a fire and its smoke, then tents one by one, last the standard.
+// A war camp of the Clan del Humo, where its waves set out. Always there and
+// smouldering (k ≈ 0.25: a fire and a tent under the standard); as a wave
+// gathers (k → 1) the smoke thickens, tents go up and the standard rises.
 export function warCamp(
   g: Graphics,
   x: number,
@@ -549,11 +550,18 @@ export function warCamp(
     });
   };
   const rise = (from: number) => Math.min(1, Math.max(0, (k - from) / 0.12));
-  g.ellipse(x, y + 4, 30, 20).fill({
-    color: P.ash,
-    alpha: 0.12 * Math.min(1, k * 3),
-  });
-  if (rise(0.2)) tent(x - 20, y - 12, 0.9, rise(0.2));
+  g.ellipse(x, y + 4, 30, 20).fill({ color: P.ash, alpha: 0.14 });
+  // A low stockade of stakes around the back of the camp.
+  for (let i = 0; i < 9; i++) {
+    const a = Math.PI * 0.15 + (i * Math.PI * 1.2) / 8,
+      px = x + Math.cos(a + Math.PI) * 32,
+      py = y + Math.sin(a + Math.PI) * 24;
+    g.moveTo(px, py + 3)
+      .lineTo(px, py - 4)
+      .stroke({ color: P.woodDark, width: 1.6, cap: "round" });
+  }
+  tent(x - 20, y - 12, 0.9, 1);
+  if (rise(0.3)) tent(x + 4, y - 18, 0.8, rise(0.3));
   if (rise(0.45)) tent(x + 20, y - 14, 0.85, rise(0.45));
   if (rise(0.7)) tent(x + 22, y + 14, 0.8, rise(0.7));
   for (let i = 0; i < 6; i++) {
@@ -567,7 +575,7 @@ export function warCamp(
   // The smoke thickens as the wave grows: seen from far before it sets out.
   smoke(g, x - 20, y + 12, t, 0.5 + k);
   smoke(g, x - 18, y + 6, t + 0.37, 0.3 + k * 0.7);
-  if (k > 0.85) clanBanner(g, x - 30, y + 2, 30, rise(0.85), t);
+  clanBanner(g, x - 30, y + 2, 22 + 8 * rise(0.85), 1, t);
 }
 // Raiders' tracks across a cell, along the way they went (fades with k).
 export function tracks(

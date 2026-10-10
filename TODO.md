@@ -2,7 +2,9 @@
 
 ## Siguiente
 
-- [ ] Que se note si una tropa quedó bien o mal puesta, y si un escuadrón está bien armado (por discutir).
+- [ ] Tomar los campamentos del Clan del Humo: sostener uno junto a una torre lo toma, arde y pasa a ser tierra propia; ese lado deja de mandar oleadas. Debe costar (campamento defendido u oleadas desde otros lados).
+- [ ] Vista previa al arrastrar una tropa sobre un escuadrón (mismas insignias del choque, sin veredicto).
+- [ ] Marca de veterano para el escuadrón que destruye una incursión sin quebrarse.
 
 ## Assets pendientes
 

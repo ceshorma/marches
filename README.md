@@ -30,7 +30,8 @@ Como en Mini Metro, la presión se acumula en el mapa donde ocurre:
 - **Huecos visibles.** Las posiciones vacías de cada escuadrón se dibujan como casillas con borde.
 - **El enemigo no huye.** Una incursión que pierde la cohesión en combate queda destruida donde está: sus hombres se dispersan y en el suelo quedan lanzas rotas y su estandarte caído durante un rato. Sus armas equipan una tropa más del tipo que más traía, que camina desde el campo de batalla hasta el patio. Solo vuelven a casa los que ya saquearon, cargando sacos de botín, y aún se les puede dar alcance por el camino.
 - **El Clan del Humo.** El enemigo tiene cara: fichas de hollín con el frente y la cohesión en rojo brasa, y cada incursión marcha bajo su estandarte (tela negra con una voluta de humo que nace de una brasa).
-- **La oleada se reúne.** Durante sus últimos 15 segundos, la próxima incursión levanta un campamento a la vista en su punto de entrada: primero el fuego y su humo, después las tiendas una a una y por último el estandarte; al completarse, sale. Si está fuera de la pantalla, una flecha en el borde lo indica.
+- **Sus campamentos.** Cada punto por el que entran oleadas es un campamento del clan, siempre a la vista: una casilla de hollín (como la tuya es azul) con empalizada, una tienda, un fuego que humea y su estandarte. Ahí vive el enemigo.
+- **La oleada se reúne.** Durante sus últimos 15 segundos, la próxima incursión hace crecer su campamento: el humo se espesa, se levantan más tiendas y el estandarte se alza; al completarse, sale. Si está fuera de la pantalla, una flecha en el borde lo indica.
 - **Huellas.** Las incursiones dejan rastro en las casillas por las que pasan, orientado según su marcha, y tarda un par de minutos en borrarse: el mapa recuerda por dónde vienen.
 
 ## Formación

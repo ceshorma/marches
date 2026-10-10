@@ -9,6 +9,7 @@ import {
   HOLD,
   hasHouse,
   eaten,
+  enemyCamps,
   gathering,
   queue,
   waiting as waitingCount,
@@ -1073,6 +1074,24 @@ export default function Board() {
             art.smoke(overlay, c.x + 2, c.y + 2, b.time, 0.6);
           }
         }
+        // The Clan del Humo camps where its waves set out: always in view,
+        // smouldering, and growing while a wave gathers there.
+        for (const id of enemyCamps(b)) {
+          const c = b.cells[id],
+            g = gathering(b).find((w) => w.from === id);
+          // Their ground, in soot, as yours is in blue.
+          overlay
+            .poly(hex(c.x, c.y, R - 1))
+            .fill({ color: CLAN, alpha: 0.12 })
+            .stroke({ color: CLAN, width: 2.5, alpha: 0.55 });
+          art.warCamp(
+            overlay,
+            c.x,
+            c.y,
+            0.25 + 0.75 * (g?.progress ?? 0),
+            b.time,
+          );
+        }
         for (const raid of activeRaids(b)) {
           const village = b.cells[raid.target ?? 8 * 18 + 14];
           const danger =
@@ -1450,12 +1469,10 @@ export default function Board() {
               .stroke({ color: CREAM, width: 1.5 });
             icon(overlay, arrival.type, x, y, 11 * g, CREAM);
           }
-          // Waves gather at their entry point before setting out.
-          for (const g of gathering(b)) {
+          const forming = gathering(b);
+          for (const g of forming) {
             const c = b.cells[g.from],
               shown = Math.max(1, Math.ceil(g.progress * g.units.length));
-            // A war camp rises: fire and smoke, tents, then the standard.
-            art.warCamp(overlay, c.x, c.y, g.progress, b.time);
             if (g.progress > 0.75)
               overlay
                 .circle(c.x, c.y, 34 + beat * 3)

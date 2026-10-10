@@ -41,7 +41,7 @@ const entries: Entry[] = [
   ],
   ["Calcinado", (g, x, y) => art.scorched(g, x, y, 1, 2)],
   ["Estandarte", (g, x, y, t) => art.clanBanner(g, x - 4, y + 14, 30, 1, t)],
-  ["Campamento 30 %", (g, x, y, t) => art.warCamp(g, x, y, 0.3, t)],
+  ["Campamento quieto", (g, x, y, t) => art.warCamp(g, x, y, 0.25, t)],
   ["Campamento 100 %", (g, x, y, t) => art.warCamp(g, x, y, 1, t)],
   ["Huellas", (g, x, y) => art.tracks(g, x, y, -0.4, 1, 5)],
   ["Incursión caída", (g, x, y) => art.fallen(g, x, y, 1, 3)],

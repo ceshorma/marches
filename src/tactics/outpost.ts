@@ -233,6 +233,12 @@ export const spoilsOf = (units: TroopType[]) =>
   (["shield", "bow", "horse"] as const)
     .map((t) => [t, units.filter((u) => u === t).length] as const)
     .sort((a, c) => c[1] - a[1])[0][0];
+// Where the Clan del Humo camps: every cell its waves set out from.
+export function enemyCamps(b: Battle): number[] {
+  const o = b.outpost;
+  if (!o) return [];
+  return o.script ? [...new Set(o.script.waves.map((w) => w.from))] : [EAST];
+}
 // Seconds an enemy wave spends gathering in view before it sets out.
 export const GATHER = 15;
 // Waves forming at their entry points: who, where and how far along.
