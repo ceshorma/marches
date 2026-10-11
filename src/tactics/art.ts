@@ -164,6 +164,7 @@ export function forest(
     [-6, 17],
     [16, 10],
   ];
+  if (rnd(seed, 24) < 0.3) fallenLog(g, x + 8, y + 19);
   const count = 3 + Math.floor(rnd(seed, 3) * 3);
   spots
     .slice(0, count)
@@ -172,7 +173,8 @@ export function forest(
       const px = x + dx + (rnd(seed, i) - 0.5) * 6,
         py = y + dy + (rnd(seed, i + 9) - 0.5) * 5;
       if (conifer || rnd(seed, i + 4) < 0.3) pine(g, px, py, 0.95, seed + i);
-      else tree(g, px, py, 1, seed + i);
+      else if (rnd(seed, i + 15) < 0.55) oak(g, px, py, 0.8, seed + i);
+      else tree(g, px, py, 0.9, seed + i);
     });
 }
 export function boulder(g: Graphics, x: number, y: number, s = 1, seed = 0) {
@@ -201,6 +203,15 @@ export function boulder(g: Graphics, x: number, y: number, s = 1, seed = 0) {
   });
 }
 export function rocks(g: Graphics, x: number, y: number, seed: number) {
+  if (rnd(seed, 20) < 0.35) {
+    boulder(g, x - 5, y - 3, 1.45, seed);
+    boulder(g, x + 17, y + 12, 0.55, seed + 5);
+    g.moveTo(x - 7, y - 10)
+      .lineTo(x - 2, y - 2)
+      .lineTo(x - 6, y + 5)
+      .stroke(line(0.55, 0.9));
+    return;
+  }
   boulder(g, x - 12, y - 4, 1.05, seed);
   boulder(g, x + 11, y - 8, 0.85, seed + 3);
   boulder(g, x + 2, y + 10, 0.95, seed + 7);
@@ -491,8 +502,17 @@ export function homestead(
       Math.floor(rnd(seed, 5) * 3),
       Math.min(1, (settled - 0.25) * 1.6),
     );
+  if (settled > 0.8 && !houseHere && rnd(seed, 27) < 0.2)
+    sheep(g, x + 9, y - 10, seed);
   if (settled > 0.7 && houseHere) {
-    house(g, x + 11, y - 9, Math.floor(rnd(seed, 6) * 3));
+    const variant = rnd(seed, 16);
+    if (variant < 0.2) granary(g, x + 9, y - 10);
+    else house(g, x + 11, y - 9, Math.floor(rnd(seed, 6) * 3));
+    if (settled > 0.9) {
+      if (variant > 0.75) orchard(g, x - 15, y - 15, seed);
+      else if (variant > 0.5) garden(g, x - 14, y - 14);
+      else if (variant > 0.3) haystacks(g, x - 13, y - 12);
+    }
     if (rnd(seed, 7) < 0.4) fence(g, x + 11, y + 2, 16);
     else if (rnd(seed, 8) < 0.3) well(g, x - 4, y - 12);
   }
@@ -842,4 +862,76 @@ export function sack(g: Graphics, x: number, y: number) {
     .moveTo(x + 2, y - 4)
     .lineTo(x + 3, y - 7)
     .stroke({ color: P.thatchDark, width: 1.2 });
+}
+
+// A lobed oak canopy, distinct from round orchard trees and pointed pines.
+export function oak(g: Graphics, x: number, y: number, s = 1, seed = 0) {
+  shadow(g, x + 2, y + 3, 12 * s, 9 * s);
+  for (let i = 0; i < 5; i++) {
+    const a = (i * Math.PI * 2) / 5 + rnd(seed),
+      r = 5 * s;
+    g.circle(x + Math.cos(a) * r, y + Math.sin(a) * r, (6 + rnd(seed, i)) * s)
+      .fill(i < 3 ? P.leafDark : P.leaf)
+      .stroke(line(0.3, 0.6));
+  }
+  g.circle(x - 2 * s, y - 3 * s, 5 * s).fill(P.leafLight);
+}
+export function fallenLog(g: Graphics, x: number, y: number) {
+  g.moveTo(x - 8, y + 3)
+    .lineTo(x + 8, y - 3)
+    .stroke({ color: P.woodDark, width: 5, cap: "round" });
+  g.moveTo(x - 7, y + 2)
+    .lineTo(x + 7, y - 3)
+    .stroke({ color: P.wood, width: 2 });
+  g.circle(x + 8, y - 3, 2).fill(P.thatch);
+}
+export function orchard(g: Graphics, x: number, y: number, seed = 0) {
+  for (let i = 0; i < 4; i++) {
+    const px = x + (i % 2) * 11 - 5,
+      py = y + Math.floor(i / 2) * 11 - 5;
+    tree(g, px, py, 0.43, seed + i);
+    g.circle(px + 2, py - 1, 1.1).fill(0xaa7353);
+  }
+}
+export function haystacks(g: Graphics, x: number, y: number) {
+  for (const dx of [-5, 5]) {
+    shadow(g, x + dx + 1, y + 2, 4, 3);
+    g.ellipse(x + dx, y, 3.5, 5)
+      .fill(P.wheat)
+      .stroke(line(0.4, 0.7));
+    g.moveTo(x + dx - 3, y)
+      .lineTo(x + dx + 3, y)
+      .stroke({ color: P.thatchDark, width: 1 });
+  }
+}
+export function garden(g: Graphics, x: number, y: number) {
+  g.roundRect(x - 10, y - 7, 20, 14, 2).fill({ color: P.soil, alpha: 0.5 });
+  for (let r = 0; r < 3; r++)
+    for (let c = 0; c < 4; c++)
+      g.ellipse(x - 7 + c * 4.5, y - 4 + r * 4, 1.7, 1.2).fill(
+        (r + c) % 2 ? P.crop : P.leafDark,
+      );
+}
+export function sheep(g: Graphics, x: number, y: number, seed = 0) {
+  for (let i = 0; i < 3; i++) {
+    const px = x + (rnd(seed, i) - 0.5) * 19,
+      py = y + (rnd(seed, i + 4) - 0.5) * 13;
+    shadow(g, px + 1, py + 1, 3, 2);
+    g.ellipse(px, py, 3, 2.2).fill(P.paper).stroke(line(0.35, 0.6));
+    g.circle(px + 3, py, 1).fill(P.ink);
+  }
+}
+export function granary(g: Graphics, x: number, y: number) {
+  shadow(g, x + 2, y + 3, 13, 10);
+  g.rect(x - 9, y - 8, 18, 16)
+    .fill(P.thatch)
+    .stroke(line(0.8, 1));
+  g.rect(x - 9, y - 8, 9, 16).fill(P.thatchDark);
+  g.moveTo(x, y - 8)
+    .lineTo(x, y + 8)
+    .stroke(line(0.6, 1));
+  for (const dx of [-8, 8])
+    for (const dy of [-7, 7])
+      g.rect(x + dx - 1, y + dy - 1, 2, 2).fill(P.woodDark);
+  haystacks(g, x, y + 16);
 }
