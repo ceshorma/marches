@@ -137,6 +137,7 @@ function token(
   alpha = 1,
   color = BLUE,
   flash = 0,
+  detailed = false,
 ) {
   const c = Math.cos(angle),
     d = Math.sin(angle);
@@ -149,12 +150,14 @@ function token(
     faded = s.routing ? 0.55 : 1,
     slots = slotsOf(s),
     hitZone = flash > 0 && s.lastZone ? zoneSlots[s.lastZone] : [];
+  if (alpha > 0.5)
+    g.circle(x, y, 25).fill({ color: CREAM, alpha: 0.66 * alpha });
   g.ellipse(x + 1.5, y + 4, 26, 22).fill({ color: INK, alpha: 0.1 * alpha });
   g.poly([...point(31, 0), ...point(23, 6), ...point(23, -6)]).fill({
     color: accent,
     alpha: alpha * faded,
   });
-  if (alpha > 0.5) {
+  if (alpha > 0.5 && (detailed || cohesion < 95 || s.routing || s.engaged)) {
     g.circle(x, y, 29).stroke({ color: 0xd6d0be, width: 3, alpha: 0.7 });
     g.moveTo(x, y - 29)
       .arc(
@@ -166,6 +169,17 @@ function token(
       )
       .stroke({ color: cohesion < 30 ? 0xc0913f : accent, width: 3 });
   }
+  if (s.routing && alpha > 0.5) {
+    for (const dist of [32, 38]) {
+      const a = point(dist - 4, -4),
+        b = point(dist, 0),
+        c = point(dist - 4, 4);
+      g.moveTo(a[0], a[1])
+        .lineTo(b[0], b[1])
+        .lineTo(c[0], c[1])
+        .stroke({ color: 0xb48b45, width: 1.8, alpha: 0.8 });
+    }
+  }
   const disorder = Math.max(0, 1 - cohesion / 60);
   for (let slot = 0; slot < 6; slot++) {
     const { a, b } = slotOffset(slot),
@@ -175,9 +189,42 @@ function token(
         b + (i >= 0 ? Math.cos(slot * 4) * disorder * 3 : 0),
       );
     if (i < 0) {
+      if (!detailed) continue;
       g.roundRect(px - 6.5, py - 6.5, 13, 13, 3)
         .fill({ color, alpha: 0.12 * alpha * faded })
         .stroke({ color, width: 1, alpha: 0.55 * alpha * faded });
+      continue;
+    }
+    if (!detailed && !s.special) {
+      // Overhead soldiers: helmet, shoulders and weapon, contained in one hex.
+      const body = s.members[i];
+      g.ellipse(px + 1, py + 2, 7, 5).fill({ color: INK, alpha: 0.16 * alpha });
+      g.circle(px, py, 6)
+        .fill({ color, alpha: alpha * faded })
+        .stroke({ color: CREAM, width: 1.4, alpha });
+      g.circle(px - 1, py - 1, 2.6).fill({ color: 0xc8c8ba, alpha });
+      if (body === "shield") {
+        const [sx, sy] = point(a + 6, b),
+          [ex, ey] = point(a + 12, b);
+        g.circle(sx, sy, 3.5)
+          .fill({ color, alpha })
+          .stroke({ color: CREAM, width: 1, alpha });
+        g.moveTo(sx, sy - 9)
+          .lineTo(ex, ey + 5)
+          .stroke({ color: INK, width: 1.5, alpha });
+      } else if (body === "bow") {
+        g.moveTo(px + 5, py - 7)
+          .quadraticCurveTo(px + 13, py, px + 5, py + 7)
+          .lineTo(px + 5, py - 7)
+          .stroke({ color: 0x765a3c, width: 1.4, alpha });
+      } else {
+        g.ellipse(px, py + 2, 4, 9)
+          .fill({ color, alpha: alpha * faded })
+          .stroke({ color: CREAM, width: 1, alpha });
+        g.circle(px, py - 2, 2.7).fill({ color: 0xc8c8ba, alpha });
+      }
+      if (hitZone.includes(slot))
+        g.circle(px, py, 8).stroke({ color: 0xf0b54a, width: 2, alpha: flash });
       continue;
     }
     g.roundRect(px - 7.5, py - 7.5, 15, 15, 3.5)
@@ -429,7 +476,7 @@ export default function Board() {
           c.y,
           c.id,
           art.ground(z > 0.5 ? "meadow" : "dry", c.height),
-          0.7,
+          0.25,
         );
         // Details that tell the height: scrub and stones up high, meadows,
         // flowers and copses down in the valleys.
@@ -455,10 +502,10 @@ export default function Board() {
           const corners = hex(c.x, c.y, R - 2);
           terrain
             .poly([...corners.slice(6, 12), c.x, c.y])
-            .fill({ color: 0xfffbea, alpha: 0.18 });
+            .fill({ color: 0xfffbea, alpha: 0.045 });
           terrain
             .poly([...corners.slice(0, 6), c.x, c.y])
-            .fill({ color: 0x5a4e32, alpha: 0.07 });
+            .fill({ color: 0x5a4e32, alpha: 0.018 });
         }
         if (c.height > 0) {
           for (let k = 0; k < 6; k++) {
@@ -807,7 +854,7 @@ export default function Board() {
             : null;
           fit = frame
             ? narrow
-              ? 0.6
+              ? 0.8
               : Math.min(
                   // The tray takes the left edge of the screen.
                   (lastW - 60 - TRAY) / (frame.x1 - frame.x0),
@@ -825,7 +872,7 @@ export default function Board() {
                     TRAY + 8 - (b.cells[b.outpost.fort].x - R * 1.2) * z
                   : (lastW + TRAY) / 2 - ((frame!.x0 + frame!.x1) / 2) * z,
                 y: narrow
-                  ? (lastH + 120) / 2 - R * 9 * z
+                  ? lastH * 0.48 - b.cells[b.outpost.fort].y * z
                   : (lastH + 90) / 2 - ((frame!.y0 + frame!.y1) / 2) * z,
               }
             : {
@@ -1347,7 +1394,7 @@ export default function Board() {
             if (f > 0.02)
               territory
                 .poly(hex(c.x, c.y, R - 1))
-                .fill({ color: CLAN, alpha: f * 0.2 });
+                .fill({ color: CLAN, alpha: f * 0.12 });
             if (f >= HOLD)
               edges[c.id].forEach((n, k) => {
                 if (n !== undefined && (foe[n] ?? 0) >= HOLD) return;
@@ -1358,12 +1405,12 @@ export default function Board() {
                     c.x + Math.cos(a + Math.PI / 3) * R,
                     c.y + Math.sin(a + Math.PI / 3) * R,
                   )
-                  .stroke({ color: CLAN, width: 2.5, alpha: 0.6 });
+                  .stroke({ color: CLAN, width: 2, alpha: 0.6 });
               });
             if (v > 0.02)
               territory
                 .poly(hex(c.x, c.y, R - 1))
-                .fill({ color: BLUE, alpha: v * 0.16 });
+                .fill({ color: BLUE, alpha: v * 0.1 });
             if (v >= HOLD)
               edges[c.id].forEach((n, k) => {
                 if (n !== undefined && (land[n] ?? 0) >= HOLD) return;
@@ -1772,7 +1819,17 @@ export default function Board() {
               .circle(p.x, p.y, 15 + age / 25)
               .stroke({ color: BLUE, width: 2, alpha: 0.55 * (1 - age / 650) });
 
-          token(overlay, u, p.x, p.y, u.facing, 1, BLUE, flashOf(u));
+          token(
+            overlay,
+            u,
+            p.x,
+            p.y,
+            u.facing,
+            1,
+            BLUE,
+            flashOf(u),
+            s.selected === u.id,
+          );
           pennant(overlay, u, p.x, p.y);
           morale(u, p.x, p.y);
         }

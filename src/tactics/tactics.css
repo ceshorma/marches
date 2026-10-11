@@ -1122,3 +1122,11 @@ button:focus-visible {
   color: #b4544b;
   white-space: nowrap;
 }
+
+/* Keep the compact mobile objective legible over the closer map. */
+@media (max-width: 700px) {
+  .tactical-header {
+    background: linear-gradient(#f5f3ec 78%, #f5f3ecdd 90%, transparent);
+    padding-bottom: 22px;
+  }
+}
