@@ -17,14 +17,14 @@ Entradas enemigas: este (16,8), noreste (15,0), sureste (16,11), sur (7,11). Emp
 
 | # | Misión | Objetivo | Reloj | Oleadas | Llegadas | Qué enseña |
 |---|---|---|---|---|---|---|
-| 1 | La primera torre | Dominar 18 casillas | Empieza con el primer escuadrón | 25 s E [C C] · 65 s E [C C A] | 10 s A | Desplegar, construir, defender; el primer choque se gana (lanzas contra jinetes) |
+| 1 | La primera torre | Dominar 18 casillas | Empieza con el primer escuadrón | Asaltos: E [C] (fuerza 35) · E [C C] (45) · E [C C A] (55) | 10 s A; levas L · L A | Desplegar, construir, defender; el primer choque se gana (lanzas contra jinetes) |
 | 2 | Dos caminos | Conservar 18 casillas | Inicio | 15 s E [L L] · 45 s S [C C] · 85 s E [L A] + S [C L] | C, L, L, A | Flancos: atacan por dos lados a la vez |
 | 3 | Cada tropa su rival | Conservar 19 casillas | Inicio | 20 s [A×4] · 55 s [C×3] · 95 s [L×4], todas del E | L, L, A, A | Elegir la tropa que vence a cada oleada |
 | 4 | La loma del norte | Dominar 28 casillas | Inicio | 45 s NE [L L C] · 80 s E [A×3] · 115 s NE [C×3] · 150 s E [L L A A] | C, A, L | Construir en altura; recibir cuesta arriba |
-| 5 | La pinza | Dominar 32 casillas sin perder el cuartel | Inicio | De dos en dos: 30 s E+S · 75 s NE+SE · 125 s E+S | L, C, A, L | Repartir la defensa |
+| 5 | La pinza | Dominar 36 casillas sin perder el cuartel | Inicio | De dos en dos: 30 s E+S · 75 s NE+SE · 125 s E+S | L, C, A, L | Repartir la defensa |
 | 6 | La línea del este | Tomar el campamento rival | Inicio | Cada 22 s desde E, NE o SE, hasta que cae el campamento; una guarnición [L L A A C C] guarda el camino | Cada 35 s | Pasar al ataque: vencer la guarnición y sostener el campamento |
 
-Entre oleadas separadas 40 s o más se intercala una escaramuza ligera (no come tierra). Las metas de tierra se comprueban al pasar la última oleada. Las oleadas con objetivo «torre» van rotando entre las torres en pie; si no queda ninguna, van al cuartel. Un cuartel saqueado es derrota. Además de las llegadas del guion, la tierra trae tropas (una cada 450/casillas segundos, como mucho una cada 18 s). Las tropas iniciales empiezan junto al cuartel: hay que llevarlas a defender.
+Las oleadas llegan en asaltos: cada uno abre unos 20 s después de que el anterior ha terminado, y deja una leva de tropas al terminar. Las metas de tierra se comprueban al pasar la última oleada (con 10 s para que la tierra vuelva a crecer). Las oleadas con objetivo «torre» van rotando entre las torres en pie; si no queda ninguna, van al cuartel. Un cuartel saqueado es derrota. Además de las levas, la tierra trae tropas de dos en dos (una cada 450/casillas segundos, como mucho una cada 18 s). En la misión 6 tomar el campamento lleva 60 s. La misión 1 abre con asaltos pequeños: un jinete, luego dos, luego dos jinetes y un arquero. Las tropas iniciales empiezan junto al cuartel: hay que llevarlas a defender.
 
 ## Combate y balance
 

@@ -1,4 +1,5 @@
 import type { Squad } from "./model";
+import { specialMembers, specialSlots } from "./units";
 export type TroopType = "shield" | "bow" | "horse";
 export const troopNames: Record<TroopType, string> = {
   shield: "Lanceros",
@@ -75,13 +76,22 @@ export function preferredSlot(type: TroopType, taken: number[]): number {
 // Slot of each member. Formations are automatic: lancers pick first, then
 // riders, then archers. Enemy waves may still carry an explicit layout.
 const pickOrder: Record<TroopType, number> = { shield: 0, horse: 1, bow: 2 };
-export function slotsOf(s: Pick<Squad, "members" | "layout">): number[] {
+export function slotsOf(
+  s: Pick<Squad, "members" | "layout" | "special">,
+): number[] {
   if (s.layout && s.layout.length === s.members.length) return s.layout;
   const taken: number[] = [];
+  const slots = Array<number>(s.members.length);
+  // A special unit takes its row first (see units.ts).
+  const special = specialMembers(s);
+  for (const i of special) {
+    slots[i] = specialSlots(s.special!).find((x) => !taken.includes(x)) ?? -1;
+    taken.push(slots[i]);
+  }
   const order = s.members
     .map((m, i) => [m, i] as const)
+    .filter(([, i]) => !special.includes(i))
     .sort((a, c) => pickOrder[a[0]] - pickOrder[c[0]]);
-  const slots = Array<number>(s.members.length);
   for (const [m, i] of order) {
     slots[i] = preferredSlot(m, taken);
     taken.push(slots[i]);

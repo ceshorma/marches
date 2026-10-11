@@ -59,10 +59,10 @@ test("the first mission's clock waits for the first squad, then shows what comes
   assert.ok(b.outpost!.sites[0].active);
   // The clock runs from the first squad: the waves are on their way.
   assert.ok(b.outpost!.script!.clock !== null);
-  const next = upcoming(b);
-  const wave = next.find((e) => e.kind === "enemy")!;
-  // Riders first: the starting lancers beat them.
-  assert.deepEqual(wave.units, ["horse", "horse"]);
+  // A lone rider first: the starting lancers beat it.
+  assert.ok(
+    b.raids!.some((r) => !r.slow && r.troop.members.join() === "horse"),
+  );
 });
 for (let i = 0; i < 6; i++)
   test(`mission ${i + 1} · a plain defence wins it`, () => {

@@ -28,6 +28,21 @@ const wave = (
   strength = 70,
   target: WaveSpec["target"] = "tower",
 ): WaveSpec => ({ at, from, units, strength, target });
+// An assault: waves that set out together (each `delay` seconds after it
+// opens), `gap` seconds after the assault before it is over.
+type Assault = { gap: number; waves: WaveSpec[] };
+const assault = (gap: number, ...waves: WaveSpec[]): Assault => ({
+  gap,
+  waves,
+});
+// A wave inside an assault: `at` is its delay from the assault's start.
+const w = (
+  from: number,
+  units: TroopType[],
+  strength = 70,
+  delay = 0,
+  target: WaveSpec["target"] = "tower",
+) => wave(delay, from, units, strength, target);
 export type MissionConfig = {
   name: string;
   objective: string;
@@ -41,8 +56,12 @@ export type MissionConfig = {
   reserve: Record<TroopType, number>;
   // The clock starts at once, or when the first tower stands.
   trigger: "start" | "tower" | "squad";
-  waves: WaveSpec[];
+  // Assaults in a sawtooth: peaks that grow, a quiet valley after each.
+  assaults: Assault[];
+  // Troops arriving at set times, and the levy each assault leaves behind
+  // (it reaches the fort when the assault is over).
   arrivals: { at: number; type: TroopType }[];
+  levies?: TroopType[][];
   // Terrain changes that shape this mission's routes.
   map?: { rock?: number[]; forest?: number[]; plain?: number[] };
   camp?: boolean;
@@ -77,7 +96,13 @@ export const missions: MissionConfig[] = [
     trigger: "squad",
     arrivals: [{ at: 10, type: A }],
     // Riders first: your lancers beat them, and the first clash shows it.
-    waves: [wave(25, E, [C, C], 50), wave(65, E, [C, C, A], 60)],
+    // Small and soon: a lone rider, then two, then a proper raid.
+    assaults: [
+      assault(15, w(E, [C], 35)),
+      assault(12, w(E, [C, C], 45)),
+      assault(15, w(E, [C, C, A], 55)),
+    ],
+    levies: [[L], [L, A]],
     goal: 18,
     check: holdLand,
   },
@@ -92,17 +117,15 @@ export const missions: MissionConfig[] = [
     squads: [{ cell: cell(3, 7), members: [L, L, A] }],
     reserve: { ...none, shield: 1 },
     trigger: "start",
-    arrivals: [
-      { at: 20, type: C },
-      { at: 35, type: L },
-      { at: 55, type: L },
-      { at: 70, type: A },
+    arrivals: [{ at: 8, type: C }],
+    assaults: [
+      assault(15, w(E, [L, L])),
+      assault(20, w(S, [C, C])),
+      assault(22, w(E, [L, A]), w(S, [C, L], 70, 4)),
     ],
-    waves: [
-      wave(15, E, [L, L]),
-      wave(45, S, [C, C]),
-      wave(85, E, [L, A]),
-      wave(85, S, [C, L]),
+    levies: [
+      [L, C],
+      [L, A],
     ],
     map: { plain: [cell(7, 9), cell(7, 10), cell(7, 11), cell(6, 10)] },
     goal: 18,
@@ -119,16 +142,16 @@ export const missions: MissionConfig[] = [
     squads: [{ cell: cell(3, 7), members: [L, L] }],
     reserve: { ...none, horse: 2, bow: 1 },
     trigger: "start",
-    arrivals: [
-      { at: 30, type: L },
-      { at: 45, type: L },
-      { at: 70, type: A },
-      { at: 80, type: A },
+    arrivals: [],
+    // Each levy brings what beats the next assault: read it and place it.
+    assaults: [
+      assault(20, w(E, [A, A, A, A], 75)),
+      assault(20, w(E, [C, C, C], 75)),
+      assault(22, w(E, [L, L, L, L], 75)),
     ],
-    waves: [
-      wave(20, E, [A, A, A, A], 75),
-      wave(55, E, [C, C, C], 75),
-      wave(95, E, [L, L, L, L], 75),
+    levies: [
+      [L, L],
+      [A, A],
     ],
     goal: 19,
     check: holdLand,
@@ -144,23 +167,20 @@ export const missions: MissionConfig[] = [
     squads: [{ cell: cell(3, 7), members: [L, L, A] }],
     reserve: { shield: 2, bow: 2, horse: 0 },
     trigger: "start",
-    arrivals: [
-      { at: 35, type: C },
-      { at: 70, type: A },
-      { at: 105, type: L },
+    arrivals: [],
+    assaults: [
+      assault(25, w(NE, [L, L, C])),
+      assault(20, w(E, [A, A, A])),
+      assault(20, w(NE, [C, C, C]), w(E, [L, A], 70, 4)),
+      assault(22, w(E, [L, L, A, A]), w(NE, [C, L], 70, 4)),
     ],
-    waves: [
-      wave(45, NE, [L, L, C]),
-      wave(80, E, [A, A, A]),
-      wave(115, NE, [C, C, C]),
-      wave(150, E, [L, L, A, A]),
-    ],
+    levies: [[C], [A, L], [L, C]],
     goal: 28,
     check: holdLand,
   },
   {
     name: "La pinza",
-    objective: "DOMINA 32 CASILLAS",
+    objective: "DOMINA 36 CASILLAS",
     hint: "Atacan de dos en dos y desde lados opuestos. Reparte la defensa.",
     success: "La pinza no se cerró",
     failure: "No te quedó tierra suficiente",
@@ -169,22 +189,18 @@ export const missions: MissionConfig[] = [
     squads: [{ cell: cell(3, 7), members: [L, L, A, A] }],
     reserve: { shield: 2, bow: 1, horse: 2 },
     trigger: "start",
-    arrivals: [
-      { at: 35, type: L },
-      { at: 70, type: C },
-      { at: 105, type: A },
-      { at: 115, type: L },
+    arrivals: [],
+    assaults: [
+      assault(22, w(E, [L, L, A]), w(S, [C, C])),
+      assault(20, w(NE, [C, C, C]), w(SE, [A, A, A])),
+      assault(22, w(E, [L, L, L, A]), w(S, [C, C, L])),
     ],
-    waves: [
-      wave(30, E, [L, L, A]),
-      wave(30, S, [C, C]),
-      wave(75, NE, [C, C, C]),
-      wave(75, SE, [A, A, A]),
-      wave(125, E, [L, L, L, A]),
-      wave(125, S, [C, C, L]),
+    levies: [
+      [L, C],
+      [A, L],
     ],
     map: { plain: [cell(7, 9), cell(7, 10), cell(7, 11)] },
-    goal: 32,
+    goal: 36,
     check: holdLand,
   },
   {
@@ -198,24 +214,37 @@ export const missions: MissionConfig[] = [
     squads: [{ cell: cell(3, 7), members: [L, L, A] }],
     reserve: { shield: 2, bow: 2, horse: 2 },
     trigger: "start",
-    arrivals: Array.from({ length: 24 }, (_, i) => ({
-      at: 25 + i * 35,
-      type: ([C, L, A] as const)[i % 3],
-    })),
-    // The camp keeps sending waves until it falls.
-    waves: Array.from({ length: 40 }, (_, i) =>
-      wave(
-        18 + i * 22,
-        i % 2 ? (i % 4 === 1 ? NE : SE) : E,
+    arrivals: [],
+    // The camp keeps sending assaults until it falls, each a little larger.
+    assaults: Array.from({ length: 16 }, (_, k) =>
+      assault(
+        k ? 22 : 18,
+        ...Array.from({ length: Math.min(3, 2 + Math.floor(k / 3)) }, (_, j) =>
+          w(
+            [E, NE, SE][(k + j) % 3],
+            (
+              [
+                [L, L, A],
+                [C, C, L],
+                [A, A, C],
+              ] as TroopType[][]
+            )[(k + j) % 3],
+            80,
+            j * 4,
+          ),
+        ),
+      ),
+    ),
+    levies: Array.from(
+      { length: 16 },
+      (_, k) =>
         (
           [
-            [L, L, A],
-            [C, C, L],
-            [A, A, C],
+            [C, L],
+            [A, C],
+            [L, A],
           ] as TroopType[][]
-        )[i % 3],
-        80,
-      ),
+        )[k % 3],
     ),
     camp: true,
     check: (b) =>
@@ -226,27 +255,21 @@ export const missions: MissionConfig[] = [
           : "active",
   },
 ];
-// Between the written waves the clan keeps probing: a light skirmish (one
-// or two raiders of the coming wave's kind) halfway through each long gap,
-// so something is always on its way.
-const SKIRMISH_GAP = 40,
-  SKIRMISH_STRENGTH = 35;
-function withSkirmishes(waves: WaveSpec[]): WaveSpec[] {
-  const out: WaveSpec[] = [];
-  waves.forEach((w, i) => {
-    const before = i ? waves[i - 1].at : 0;
-    if (w.at - before >= SKIRMISH_GAP)
-      out.push({
-        at: Math.round((before + w.at) / 2),
-        from: w.from,
-        units: w.units.slice(0, w.units.length > 3 ? 2 : 1),
-        strength: SKIRMISH_STRENGTH,
-        target: w.target,
-        probe: true,
-      });
-    out.push(w);
+// The assaults laid out as one list of waves, each knowing its assault.
+// `at` is an estimate (valleys follow the fights), used for the map only.
+function flatten(assaults: Assault[]): WaveSpec[] {
+  let clock = 0;
+  return assaults.flatMap((a, k) => {
+    clock += a.gap;
+    const out = a.waves.map((wv) => ({
+      ...wv,
+      at: clock + wv.at,
+      assault: k,
+      delay: wv.at,
+    }));
+    clock += 30;
+    return out;
   });
-  return out;
 }
 export function createMission(index: number): Battle {
   index = Math.max(0, Math.min(missions.length - 1, index));
@@ -276,12 +299,14 @@ export function createMission(index: number): Battle {
   o.script = {
     trigger: m.trigger,
     clock: null,
-    waves: withSkirmishes(m.waves),
+    waves: flatten(m.assaults),
     arrivals: m.arrivals,
     spawned: 0,
     delivered: 0,
+    assaults: m.assaults.map((a) => ({ gap: a.gap })),
+    levies: m.levies,
   };
-  for (const w of m.waves) b.cells[w.from].terrain = "plain";
+  for (const wv of o.script.waves) b.cells[wv.from].terrain = "plain";
   for (const s of m.squads ?? []) {
     o.serial++;
     b.cells[s.cell].terrain = "plain";

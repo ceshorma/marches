@@ -4,11 +4,13 @@ import { troopTypes } from "../src/tactics/combat";
 import type { TroopType } from "../src/tactics/combat";
 import {
   addReserveTroop,
+  addSpecial,
   campSupported,
   deploymentError,
   placeTower,
 } from "../src/tactics/outpost";
 import { adjacent, order } from "../src/tactics/model";
+import { specials } from "../src/tactics/units";
 type B = ReturnType<typeof createMission>;
 export type Player = (b: B) => void;
 // Deploys whatever arrives (of the given kinds), builds every site and keeps
@@ -42,6 +44,23 @@ export const plain =
         const at = free ?? host?.cell;
         if (at === undefined || addReserveTroop(b, at, type)) break;
       }
+    // Special units join a squad with room for them, or form a new one.
+    for (const kind of [...(o.specials ?? [])]) {
+      const size = specials[kind].size;
+      const host = b.squads.find(
+        (u) =>
+          !u.special &&
+          u.members.length + size <= 6 &&
+          !u.path.length &&
+          !u.engaged &&
+          !u.routing,
+      );
+      const free = adjacent(o.fort).find(
+        (id) => !deploymentError(b, id) && !b.squads.some((u) => u.cell === id),
+      );
+      const at = host?.cell ?? free;
+      if (at === undefined || addSpecial(b, at, kind)) break;
+    }
     const threatened = (b.raids ?? []).find(
       (r) => r.phase === "approach" && !r.guard,
     )?.target;

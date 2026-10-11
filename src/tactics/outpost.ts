@@ -8,6 +8,8 @@ import {
   VETERAN,
 } from "./chronicle";
 import type { NewsEvent } from "./chronicle";
+import { heroNames, specials, stancesFor } from "./units";
+import type { SpecialKind, Stance } from "./units";
 import { applyMap, maps } from "./maps";
 import type { MapName } from "./maps";
 import type { TroopType } from "./combat";
@@ -24,8 +26,8 @@ import {
 import type { Battle, Raid, Squad, WaveSpec } from "./model";
 const cell = (q: number, r: number) => r * 18 + q;
 export const EAST = cell(16, 8);
-// What the tray holds: troops, and towers waiting to be placed.
-export type Item = TroopType | "tower";
+// What the tray holds: troops, towers waiting to be placed and special units.
+export type Item = TroopType | "tower" | SpecialKind;
 export function createOutpost(map: MapName = "llanura"): Battle {
   const b = createBattle();
   const t = maps[map];
@@ -317,7 +319,7 @@ export const queue = (o: Outpost): TroopType[] =>
   );
 // A new troop for the fort: from a settled house, or from the battlefield
 // (`from`) when it comes with the spoils of a destroyed raid.
-function arrive(b: Battle, type: TroopType, from?: number) {
+function arrive(b: Battle, type: TroopType, from?: number, quiet = false) {
   const o = b.outpost!;
   o.arrivals++;
   if (waiting(o) >= FORT_CAP) {
@@ -345,8 +347,100 @@ function arrive(b: Battle, type: TroopType, from?: number) {
       from ??
       (home.length ? home[o.arrivals % Math.min(3, home.length)] : undefined),
   };
-  news(b, from === undefined ? "arrival" : "spoils", { t: troopName[type] });
+  if (!quiet)
+    news(b, from === undefined ? "arrival" : "spoils", { t: troopName[type] });
   notify(o, `+1 ${troopNames[type].toLowerCase()}`, o.fort, "good", b.time + 4);
+}
+// ── Special units and actions ─────────────────────────────────────────
+// Raids destroyed for each special unit their spoils make, and the land a
+// war wagon needs (free play).
+export const SPOILS_SPECIAL = 3,
+  WAGON_LAND = 30;
+// A special unit reaches the tray.
+export function giveSpecial(b: Battle, kind: SpecialKind) {
+  const o = b.outpost!;
+  o.specials = [...(o.specials ?? []), kind];
+  news(b, "special", { t: specials[kind].name.toLowerCase() });
+  notify(o, specials[kind].name, o.fort, "good", b.time + 4);
+}
+// A veteran squad's commander becomes a hero: two places of its main troop.
+function promote(b: Battle, u: Squad) {
+  if (u.special) return;
+  const type = spoilsOf(u.members),
+    count = u.members.filter((m) => m === type).length;
+  if (count < 2) {
+    if (u.members.length >= 6) return;
+    u.members.push(type);
+  }
+  const o = b.outpost!,
+    heroes = b.squads.filter((s) => s.special?.kind === "hero").length,
+    name = heroNames[((o.spoilsCount ?? 0) + heroes) % heroNames.length];
+  u.special = { kind: "hero", type, size: 2, name };
+  u.layout = undefined;
+  news(b, "hero", { s: u.name, t: name });
+}
+// Puts a special unit from the tray into the squad on that cell (it needs
+// room for all its places, and a squad holds one special) or a new squad.
+export function addSpecial(
+  b: Battle,
+  id: number,
+  kind: SpecialKind,
+): string | null {
+  const o = b.outpost!,
+    error = deploymentError(b, id);
+  const unit = b.squads.find((u) => u.cell === id);
+  if (error && !(error === "Escuadrón completo" && unit)) return error;
+  const i = (o.specials ?? []).indexOf(kind);
+  if (i < 0) return "No queda esa unidad";
+  const sp = specials[kind];
+  if (unit && unit.special) return "Ya lleva una unidad especial";
+  if (unit && unit.members.length + sp.size > 6)
+    return `Necesita ${sp.size} sitios libres`;
+  if (!unit && b.squads.length >= 5) return "Máximo de cinco escuadrones";
+  let u = unit;
+  if (!u) {
+    o.serial++;
+    u = {
+      id: `p${o.serial}`,
+      name: nameSquad(b),
+      cell: id,
+      facing: 0,
+      targetFacing: 0,
+      members: [],
+      path: [],
+      progress: 0,
+      hold: true,
+      cohesion: 100,
+    };
+    b.squads.push(u);
+    news(b, "formed", { s: u.name });
+  }
+  // Its places go first among the members, so they are its own.
+  u.members = [...Array<TroopType>(sp.size).fill(sp.type), ...u.members];
+  u.special = { kind, type: sp.type, size: sp.size };
+  u.layout = undefined;
+  o.specials!.splice(i, 1);
+  return null;
+}
+// Sets a squad's tactical action (or none).
+export function setStance(
+  b: Battle,
+  id: string,
+  stance: Stance | null,
+): string | null {
+  const u = b.squads.find((s) => s.id === id);
+  if (!u) return "Selecciona un escuadrón";
+  if (u.routing) return "El escuadrón se está reagrupando";
+  if (stance && !stancesFor(u).includes(stance))
+    return "Este escuadrón no puede hacerlo";
+  if (stance === "charge" && (u.tiredUntil ?? -1) > b.time)
+    return "Aún está agotado";
+  u.stance = stance ?? undefined;
+  u.stanceAt = b.time;
+  if (stance === "hold") {
+    u.path = u.progress > 0 ? u.path.slice(0, 1) : [];
+  }
+  return null;
 }
 // Why a raid fell to this squad, for the chronicle: arrows from afar, the
 // high ground, a blow on the flank, the troop that beats them, or none.
@@ -359,6 +453,18 @@ function victory(b: Battle, s: Squad, r: Raid): NewsEvent {
   if (zoneFrom(e.facing, p, q) !== "front") return "flank";
   if (matchup(s.members, e.members) > 1.1) return "rival";
   return "destroyed";
+}
+// A levy: several troops at once, in a quiet moment, so placing them is
+// thinking about the squads' make-up rather than a chore every few seconds.
+export function levy(b: Battle, types: TroopType[]) {
+  if (!types.length) return;
+  for (const t of types) arrive(b, t, undefined, true);
+  news(b, "levy", {
+    t: types
+      .map((t) => troopName[t])
+      .join(", ")
+      .replace(/, ([^,]*)$/, " y $1"),
+  });
 }
 export const spoilsOf = (units: TroopType[]) =>
   (["shield", "bow", "horse"] as const)
@@ -400,7 +506,28 @@ function runScript(b: Battle) {
     else return;
   }
   const t = b.time - sc.clock;
-  while (sc.spawned < sc.waves.length && t >= sc.waves[sc.spawned].at) {
+  if (sc.assaults) {
+    sc.starts ??= sc.assaults.map((a, k) => (k ? null : a.gap));
+    const k = sc.cleared ?? 0,
+      start = sc.starts[k];
+    // An assault is over once all its waves set out and none is left: the
+    // valley begins, with its levy, and the next assault is set.
+    if (k < sc.assaults.length && start !== null && t >= start) {
+      const mine = sc.waves.flatMap((w, i) => (w.assault === k ? [i] : []));
+      const over =
+        mine.every((i) => i < sc.spawned) &&
+        !(b.raids ?? []).some(
+          (r) => r.wave !== undefined && mine.includes(r.wave),
+        );
+      if (over) {
+        sc.cleared = k + 1;
+        if (k + 1 < sc.assaults.length)
+          sc.starts[k + 1] = t + sc.assaults[k + 1].gap;
+        levy(b, sc.levies?.[k] ?? []);
+      }
+    }
+  }
+  while (sc.spawned < sc.waves.length && t >= startOf(sc, sc.spawned)) {
     const spec = sc.waves[sc.spawned];
     if (
       !launch(
@@ -420,6 +547,52 @@ function runScript(b: Battle) {
     sc.delivered++;
   }
 }
+// When a scripted wave sets out, in clock time (Infinity while its assault
+// waits for the one before to be over).
+function startOf(sc: NonNullable<Outpost["script"]>, i: number) {
+  const w = sc.waves[i];
+  if (w.assault === undefined || !sc.assaults) return w.at;
+  const start =
+    sc.starts?.[w.assault] ?? (w.assault ? null : sc.assaults[0].gap);
+  return start === null || start === undefined
+    ? Infinity
+    : start + (w.delay ?? 0);
+}
+// Calling the next assault early, from a quiet valley: it sets out in a few
+// seconds and the land sends one more troop for the boldness.
+export const CALL_SOON = 3;
+export function callable(b: Battle): boolean {
+  const o = b.outpost;
+  if (!o || o.camp?.taken) return false;
+  if (live(b).some((r) => !r.slow && !r.guard)) return false;
+  const sc = o.script;
+  if (!sc)
+    return Number.isFinite(o.nextRaid) && o.nextRaid - b.time > CALL_SOON + 2;
+  if (!sc.assaults || sc.clock === null) return false;
+  const k = sc.cleared ?? 0,
+    start = sc.starts?.[k];
+  return (
+    k < sc.assaults.length &&
+    start !== null &&
+    start !== undefined &&
+    start - (b.time - sc.clock) > CALL_SOON + 2
+  );
+}
+export function callAssault(b: Battle): string | null {
+  if (!callable(b)) return "Ahora no se puede llamar";
+  const o = b.outpost!,
+    sc = o.script;
+  if (sc) sc.starts![sc.cleared ?? 0] = b.time - sc.clock! + CALL_SOON;
+  else o.nextRaid = b.time + CALL_SOON;
+  arrive(
+    b,
+    o.supply[o.arrivals % o.supply.length] ?? "shield",
+    undefined,
+    true,
+  );
+  news(b, "called");
+  return null;
+}
 export type Upcoming = {
   at: number;
   kind: "enemy" | "ally";
@@ -438,13 +611,16 @@ export function upcoming(b: Battle): Upcoming[] {
     if (start === null) return [];
     const now = b.time - start;
     return [
-      ...sc.waves.slice(sc.spawned).map((w, i) => ({
-        at: Math.max(0, w.at - now),
-        kind: "enemy" as const,
-        units: w.units,
-        from: w.from,
-        target: aim(b, w.target, sc.spawned + i),
-      })),
+      ...sc.waves
+        .slice(sc.spawned)
+        .map((w, i) => ({
+          at: Math.max(0, startOf(sc, sc.spawned + i) - now),
+          kind: "enemy" as const,
+          units: w.units,
+          from: w.from,
+          target: aim(b, w.target, sc.spawned + i),
+        }))
+        .filter((e) => Number.isFinite(e.at)),
       ...sc.arrivals.slice(sc.delivered).map((a) => ({
         at: Math.max(0, a.at - now),
         kind: "ally" as const,
@@ -520,6 +696,15 @@ export function updateOutpost(b: Battle, dt: number) {
   for (const r of b.raids) {
     if (r.fell === undefined || r.spoils) continue;
     r.spoils = true;
+    // Every SPOILS_SPECIAL raids destroyed, their arms make a special unit.
+    if (!r.slow && !r.guard) {
+      o.spoilsCount = (o.spoilsCount ?? 0) + 1;
+      if (o.spoilsCount % SPOILS_SPECIAL === 0)
+        giveSpecial(
+          b,
+          (o.spoilsCount / SPOILS_SPECIAL) % 2 ? "knights" : "scorpion",
+        );
+    }
     // Who destroyed it gets the credit; a second raid makes them veterans.
     const slayers = b.squads.filter((u) => r.slayers?.includes(u.id));
     const best = slayers[0];
@@ -530,7 +715,10 @@ export function updateOutpost(b: Battle, dt: number) {
       });
     for (const u of slayers) {
       u.feats = (u.feats ?? 0) + 1;
-      if (u.feats === VETERAN) news(b, "veteran", { s: u.name });
+      if (u.feats === VETERAN) {
+        news(b, "veteran", { s: u.name });
+        promote(b, u);
+      }
     }
     arrive(b, spoilsOf(r.troop.members), r.troop.cell);
   }
@@ -539,21 +727,32 @@ export function updateOutpost(b: Battle, dt: number) {
   updateTracks(b, dt);
   updateScouts(b);
   quietNews(b);
+  // Holding a wide region earns the war wagon once (free play).
+  if (!o.script && !o.wagonGiven && held(b) >= WAGON_LAND) {
+    o.wagonGiven = true;
+    giveSpecial(b, "wagon");
+  }
   if (o.camp && !o.camp.taken) updateCamp(b, o.camp, dt);
   if (o.script) {
     if (!o.camp?.taken) runScript(b);
     return;
   }
-  // Free play keeps a steady rhythm: a raid every interval, up to two on
-  // the map at once, at your towers in turn (or the fort while none stand).
+  // Free play comes in assaults too: as many raids as your land calls for
+  // (FREE_LAND cells each, up to three), from the entries in turn; when the
+  // last is over, a valley of FREE_VALLEY seconds before the next.
   const raiding = b.raids.filter((r) => !r.slow && !r.guard).length;
+  if (o.assaultOpen && !raiding) {
+    o.assaultOpen = false;
+    o.nextRaid = b.time + FREE_VALLEY;
+  }
   if (
-    raiding < 2 &&
+    !o.assaultOpen &&
     b.time >= o.nextRaid &&
     o.repelled < o.raids.limit &&
     !o.camp?.taken
   ) {
-    if (
+    const size = Math.min(3, 1 + Math.floor(held(b) / FREE_LAND));
+    for (let i = 0; i < size; i++)
       launch(b, {
         from: nextEntry(o),
         units:
@@ -562,11 +761,13 @@ export function updateOutpost(b: Battle, dt: number) {
           ],
         strength: o.raids.strength,
         target: freeTarget(b),
-      })
-    )
-      o.nextRaid = b.time + o.raids.interval;
+      });
+    o.assaultOpen = true;
+    o.nextRaid = Infinity;
   }
 }
+export const FREE_VALLEY = 30,
+  FREE_LAND = 15;
 // Until your first squad stands, nothing waits: a lone scout sets out every
 // SCOUT_EVERY seconds and walks very slowly towards the fort, giving time to
 // form that squad. The normal rhythm starts with it (free play's raids, and
@@ -624,7 +825,7 @@ function updateTracks(b: Battle, dt: number) {
   }
 }
 // Seconds a squad must hold the rival camp to take it.
-export const CAMP_HOLD = 35;
+export const CAMP_HOLD = 60;
 // Holding the rival camp, uncontested and next to a secured tower, ends the raids.
 function updateCamp(b: Battle, camp: NonNullable<Outpost["camp"]>, dt: number) {
   const o = b.outpost!;
@@ -675,6 +876,8 @@ export const hasHouse = (id: number) =>
 // Cell-seconds of held land per troop that arrives at the fort, and the
 // fastest arrivals can come however much land is held.
 export const HARVEST = 450;
+// Troops the land sends together.
+export const LEVY = 2;
 const FASTEST = 18;
 const yieldRate = (b: Battle) => Math.min(held(b) / HARVEST, 1 / FASTEST);
 const GROW = 0.35,
@@ -711,6 +914,11 @@ function supported(b: Battle) {
   const o = b.outpost!,
     from = new Map<number, number>();
   for (const id of reach(b, o.fort, 1).keys()) from.set(id, -Infinity);
+  // A war wagon standing still holds the ground around it.
+  for (const u of b.squads)
+    if (u.special?.kind === "wagon" && !u.path.length && !u.progress)
+      for (const id of reach(b, u.cell, 1).keys())
+        from.set(id, Math.min(from.get(id) ?? Infinity, -Infinity));
   for (const s of o.sites) {
     if (!s.active || s.builtAt === null) continue;
     for (const [id, cost] of reach(b, s.cell, 2)) {
@@ -780,6 +988,12 @@ function updateFoe(
   const trodden = new Set(
     b.squads.filter((u) => !u.routing).map((u) => u.cell),
   );
+  // Squads holding their ground win it back twice as fast.
+  const holding = new Set(
+    b.squads
+      .filter((u) => u.stance === "hold" && !u.routing)
+      .map((u) => u.cell),
+  );
   for (let id = 0; id < foe.length; id++) {
     if (solid(b.cells[id])) continue;
     let v = foe[id];
@@ -787,7 +1001,7 @@ function updateFoe(
     if (eat) v += eat * FOE_TAKE * dt;
     else if (camps.has(id) && land[id] < HOLD) v += FOE_GROW * dt;
     else v -= (from.has(id) ? FOE_BACK : FOE_FADE) * dt;
-    if (trodden.has(id)) v -= FOE_TREAD * dt;
+    if (trodden.has(id)) v -= FOE_TREAD * (holding.has(id) ? 2 : 1) * dt;
     foe[id] = Math.min(1, Math.max(0, v));
   }
 }
@@ -847,11 +1061,17 @@ function updateLand(b: Battle, dt: number) {
       notify(o, "Torre caída", s.cell, "danger", b.time + 6);
       news(b, "towerLost");
     }
-  // Held land yields troops at the fort.
+  // Held land yields troops at the fort, LEVY at a time.
   o.harvest = (o.harvest ?? 0) + yieldRate(b) * dt;
-  if (o.harvest >= 1) {
-    o.harvest -= 1;
-    arrive(b, o.supply[o.arrivals % o.supply.length] ?? "shield");
+  if (o.harvest >= LEVY) {
+    o.harvest -= LEVY;
+    levy(
+      b,
+      Array.from(
+        { length: LEVY },
+        (_, i) => o.supply[(o.arrivals + i) % o.supply.length] ?? "shield",
+      ),
+    );
   }
 }
 // When the next troop earned by the land will arrive.
@@ -860,8 +1080,11 @@ function nextHarvest(b: Battle): Upcoming | null {
     rate = yieldRate(b);
   if (!rate) return null;
   return {
-    at: (1 - (o.harvest ?? 0)) / rate,
+    at: (LEVY - (o.harvest ?? 0)) / rate,
     kind: "ally",
-    units: [o.supply[o.arrivals % o.supply.length] ?? "shield"],
+    units: Array.from(
+      { length: LEVY },
+      (_, i) => o.supply[(o.arrivals + i) % o.supply.length] ?? "shield",
+    ),
   };
 }

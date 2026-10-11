@@ -77,6 +77,15 @@ const lines = {
     "{s} supo a quién enfrentar: los {e} no tenían respuesta.",
     "Los {e} se toparon con el rival que temían: {s}.",
   ],
+  hero: [
+    "El comandante de {s} asciende: nace la leyenda de {t}.",
+    "{t}, de {s}, ya es un héroe de la marca.",
+    "Los de {s} siguen a {t} a donde sea.",
+  ],
+  special: [
+    "Con el botín se arma una unidad: {t}.",
+    "Llega a la bandeja: {t}.",
+  ],
   veteran: [
     "Los de {s} están orgullosos de su comandante.",
     "{s} ya es un escuadrón veterano.",
@@ -104,6 +113,15 @@ const lines = {
     "Sale una incursión de {e} hacia {g}.",
     "Humo en el campamento: {e} marchan hacia {g}.",
     "Los vigías avisan: {e} van a por {g}.",
+  ],
+  levy: [
+    "Llega una leva al cuartel: {t}.",
+    "La tierra manda gente: {t}.",
+    "Se presentan voluntarios: {t}.",
+  ],
+  called: [
+    "Has llamado al clan antes de tiempo. La aldea manda a uno más.",
+    "Tambores en el cuartel: que vengan ya.",
   ],
   scout: [
     "Un explorador del clan merodea por el este.",
@@ -143,6 +161,8 @@ const tones: Partial<Record<NewsEvent, News["tone"]>> = {
   arrows: "good",
   rival: "good",
   veteran: "good",
+  hero: "good",
+  special: "good",
   tower: "good",
   camp: "good",
   spoils: "good",

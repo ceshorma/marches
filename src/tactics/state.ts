@@ -3,8 +3,12 @@ import {
   createScout,
   updateOutpost,
   addReserveTroop,
+  addSpecial,
+  callAssault,
   placeTower,
+  setStance,
 } from "./outpost";
+import type { SpecialKind, Stance } from "./units";
 import {
   createMission,
   updateMission,
@@ -29,6 +33,15 @@ type State = {
   hold: (item: Item | null) => void;
   dropTroop: (cell: number, type: TroopType) => void;
   dropTower: (cell: number) => void;
+  dropSpecial: (cell: number, kind: SpecialKind) => void;
+  // The selected squad's tactical action (none to stop it).
+  act: (stance: Stance | null) => void;
+  // Calls the next assault early, from a quiet valley.
+  call: () => void;
+  // Time runs slow while deciding: a troop in hand (dragged or held) or a
+  // squad just selected (see SLOW).
+  aiming: boolean;
+  selectedAt: number;
   selectedBase: "ally" | "enemy" | null;
   deploy: (type?: TroopType) => void;
   paused: boolean;
@@ -89,6 +102,7 @@ export const useTactics = create<State>((set, get) => ({
   select: (selected) =>
     set({
       selected,
+      selectedAt: performance.now(),
       held: null,
       selectedBase: null,
       message: null,
@@ -102,8 +116,40 @@ export const useTactics = create<State>((set, get) => ({
       held: null,
       revision: s.revision + 1,
       ...(!message
-        ? { selected: s.battle.squads.find((u) => u.cell === cell)!.id }
+        ? {
+            selected: s.battle.squads.find((u) => u.cell === cell)!.id,
+            selectedAt: performance.now(),
+          }
         : {}),
+    });
+  },
+  dropSpecial: (cell, kind) => {
+    const s = get(),
+      message = addSpecial(s.battle, cell, kind);
+    set({
+      message,
+      held: null,
+      revision: s.revision + 1,
+      ...(!message
+        ? {
+            selected: s.battle.squads.find((u) => u.cell === cell)!.id,
+            selectedAt: performance.now(),
+          }
+        : {}),
+    });
+  },
+  call: () => {
+    const s = get();
+    set({ message: callAssault(s.battle), revision: s.revision + 1 });
+  },
+  aiming: false,
+  selectedAt: 0,
+  act: (stance) => {
+    const s = get();
+    if (!s.selected) return;
+    set({
+      message: setStance(s.battle, s.selected, stance),
+      revision: s.revision + 1,
     });
   },
   dropTower: (cell) => {
@@ -200,3 +246,11 @@ export const useTactics = create<State>((set, get) => ({
       revision: 0,
     }),
 }));
+
+// Slow time: how slow, and for how long after selecting a squad (ms).
+export const SLOW = 0.3,
+  SLOW_FOR = 3000;
+export const slowed = (
+  s: Pick<State, "aiming" | "held" | "selected" | "selectedAt">,
+  now: number,
+) => s.aiming || !!s.held || (!!s.selected && now - s.selectedAt < SLOW_FOR);

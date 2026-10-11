@@ -119,7 +119,7 @@ test("mission 6: the camp's garrison must fall before the camp can be taken", ()
   settleLand(b);
   b.squads.push({ ...riders(o.camp!.cell), id: "holder" });
   // No waves for a long while: only the garrison defends the camp.
-  o.script!.waves = o.script!.waves.map((w) => ({ ...w, at: w.at + 1e4 }));
+  o.script!.starts = o.script!.assaults!.map((_, k) => (k ? null : 1e4));
   // At full strength it holds: contested, the taking crawls.
   run(b, CAMP_HOLD + 5);
   assert.equal(o.camp!.taken, false);

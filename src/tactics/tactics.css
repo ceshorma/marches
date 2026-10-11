@@ -1053,6 +1053,72 @@ button:focus-visible {
     font-size: 12px;
   }
   .chronicle.raised {
-    bottom: 150px;
+    bottom: 218px;
   }
+}
+
+/* Tactical actions of the selected squad. */
+.orders .actions {
+  display: flex;
+  gap: 5px;
+}
+.orders .actions button,
+.orders .actions button:last-child {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+  width: 66px;
+  padding: 7px 4px;
+  border: 1px solid #d7d7c9;
+  border-radius: 6px;
+  background: transparent;
+  color: #344750;
+}
+.orders .actions button span {
+  font-size: 8.5px;
+  line-height: 1.15;
+  text-align: center;
+}
+@media (max-width: 700px) {
+  .orders {
+    flex-wrap: wrap;
+    justify-content: center;
+    gap: 8px;
+    width: calc(100vw - 32px);
+    box-sizing: border-box;
+  }
+  .orders .actions {
+    order: 3;
+    width: 100%;
+    justify-content: center;
+  }
+  .orders .actions button,
+  .orders .actions button:last-child {
+    width: auto;
+    flex: 1;
+  }
+}
+.orders .actions button.chosen {
+  background: #dce5e3;
+  border-color: #326f97;
+  color: #326f97;
+}
+
+/* Slow time while deciding, and calling the next assault early. */
+.clock .slow {
+  font-style: italic;
+  font-size: 10px;
+  margin-left: 4px;
+  color: #326f97;
+}
+.timeline .call {
+  font: 600 10px Georgia;
+  letter-spacing: 1px;
+  padding: 5px 9px;
+  border: 1px solid #b4544b;
+  border-radius: 12px;
+  background: #f8f6ef;
+  color: #b4544b;
+  white-space: nowrap;
 }

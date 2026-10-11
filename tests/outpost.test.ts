@@ -52,6 +52,8 @@ test("before the first squad only a slow lone scout comes; then the raids start"
 });
 test("defending the tower repels a patrol and the same world continues", () => {
   const b = built();
+  // Assaults grow with the land: a full squad holds the tower.
+  b.squads[0].members.push("shield", "shield", "shield");
   run(b, 160);
   assert.ok(b.outpost!.waves >= 2);
   assert.ok(b.outpost!.sites[0].active);

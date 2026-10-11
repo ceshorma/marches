@@ -33,10 +33,10 @@ test("troops wait at the fort and a full fort turns arrivals away", () => {
     "horse",
     "horse",
   ]);
-  // The first arrival comes at 25 s with no room left.
-  run(b, 26);
+  // The first levy the land sends finds no room left.
+  run(b, 60);
   assert.equal(waiting(o), FORT_CAP);
-  // Both the timed arrival and the troop earned by the land are lost.
+  // Its troops are lost.
   assert.ok(o.turnedAway >= 1);
   assert.equal(o.noticeTone, "danger");
 });

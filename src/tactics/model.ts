@@ -3,6 +3,8 @@ import type { TroopType } from "./combat";
 import { advanceFronts } from "./fronts";
 import { news, troopName, veteran } from "./chronicle";
 import type { News } from "./chronicle";
+import { ENTRENCH, specialMembers, TIRED } from "./units";
+import type { Special, SpecialKind, Stance } from "./units";
 export const COLS = 18,
   ROWS = 12,
   R = 42,
@@ -43,6 +45,13 @@ export type Squad = {
   feats?: number;
   // When it was last struck by arrows from afar.
   lastVolley?: number;
+  // A unit taking several places (see units.ts).
+  special?: Special;
+  // The tactical action it is taking, since when, and when a charge's
+  // weariness wears off.
+  stance?: Stance;
+  stanceAt?: number;
+  tiredUntil?: number;
 };
 export type Raid = {
   target?: number;
@@ -80,8 +89,11 @@ export type WaveSpec = {
   from: number;
   units: TroopType[];
   layout?: number[];
-  // A light skirmish between the written waves (see campaign.ts).
+  // A light skirmish that fights but does not eat land (scouts).
   probe?: boolean;
+  // The assault it belongs to, and seconds after that assault opens.
+  assault?: number;
+  delay?: number;
   // "tower" picks the next standing tower (or the fort if none stand).
   target: "tower" | "fort" | number;
   strength: number;
@@ -93,6 +105,14 @@ export type Script = {
   arrivals: { at: number; type: TroopType }[];
   spawned: number;
   delivered: number;
+  // Waves come in assaults: each opens `gap` seconds after the one before
+  // is over (the first, `gap` after the clock starts), so a quiet valley
+  // follows every peak. When each assault opens (clock time; null until
+  // known), how many are over, and the levy of troops each one leaves.
+  assaults?: { gap: number }[];
+  starts?: (number | null)[];
+  cleared?: number;
+  levies?: TroopType[][];
 };
 export type Sector = {
   id: string;
@@ -182,6 +202,13 @@ export type Battle = {
     // The chronicle: latest news, and how often each kind was told.
     news?: News[];
     newsCount?: Record<string, number>;
+    // Special units waiting in the tray, raids destroyed so far (every few
+    // bring one) and whether the land has given its war wagon.
+    specials?: SpecialKind[];
+    // Free play: whether an assault is on the map.
+    assaultOpen?: boolean;
+    spoilsCount?: number;
+    wagonGiven?: boolean;
   };
   lesson?: {
     index: number;
@@ -410,6 +437,8 @@ export function order(b: Battle, id: string, end: number): string | null {
   }
   const p = route(b, s, end);
   if (!p.length) return "Destino bloqueado o sin acceso";
+  // Moving gives up the ground it held.
+  if (s.stance === "hold") s.stance = undefined;
   s.path = s.progress > 0 ? [s.path[0], ...p] : p;
   s.disengaging = !!s.engaged;
   s.pendingFacing = undefined;
@@ -428,7 +457,12 @@ export const PACE: Record<TroopType, number> = {
   shield: 1.6,
 };
 export const pace = (s: Squad) =>
-  Math.max(...s.members.map((m) => PACE[m]), PACE.horse);
+  (s.special?.kind === "wagon"
+    ? WAGON_PACE
+    : Math.max(...s.members.map((m) => PACE[m]), PACE.horse)) *
+  (s.stance === "wall" ? 2 : 1);
+// The war wagon crawls.
+export const WAGON_PACE = 3.2;
 export function advance(b: Battle, dt: number) {
   b.time += dt;
   if (b.fronts) advanceFronts(b, dt);
@@ -437,6 +471,7 @@ export function advance(b: Battle, dt: number) {
     let delta =
       ((s.targetFacing - s.facing + Math.PI * 3) % (Math.PI * 2)) - Math.PI;
     s.facing += Math.sign(delta) * Math.min(Math.abs(delta), dt * 2.5);
+    if (s.stance === "skirmish") skirmish(b, s);
     // Caught by a fight halfway between cells: step back to the cell it was
     // leaving and fight from there, never from between two hexes.
     if (s.engaged && !s.disengaging && !s.routing) {
@@ -490,6 +525,30 @@ export function advance(b: Battle, dt: number) {
     }
   }
 }
+// Hostigar: archers stepping back from a foe that comes to arm's length, to
+// a free cell still within their range.
+function skirmish(b: Battle, s: Squad) {
+  if (s.routing || s.path.length || s.progress || !s.members.includes("bow"))
+    return;
+  const here = squadPosition(b, s);
+  const foe = activeRaids(b)
+    .map((r) => r.troop)
+    .find((e) => {
+      const p = squadPosition(b, e);
+      return Math.hypot(p.x - here.x, p.y - here.y) < DX * 1.65;
+    });
+  if (!foe) return;
+  const f = squadPosition(b, foe),
+    away = (id: number) => Math.hypot(b.cells[id].x - f.x, b.cells[id].y - f.y);
+  const step = adjacent(s.cell)
+    .filter((id) => !blocked(b, id, s.id))
+    .filter((id) => away(id) >= DX * 1.65 && away(id) < RANGE)
+    .sort((a, c) => away(c) - away(a))[0];
+  if (step === undefined) return;
+  s.path = [step];
+  s.disengaging = true;
+  s.engaged = undefined;
+}
 // Walks a troop back towards the cell it was leaving; true once it is there.
 function stepBack(s: Squad, amount: number) {
   if (!s.progress) return true;
@@ -537,6 +596,11 @@ export function casualty(b: Battle, s: Squad): boolean {
     zone = zoneSlots[s.lastZone ?? "front"];
   let i = s.members.findIndex((_, k) => zone.includes(slots[k]));
   if (i < 0) i = s.members.length - 1;
+  // A special unit struck loses one of its places: its size is its life.
+  if (s.special && specialMembers(s).includes(i)) {
+    s.special.size--;
+    if (!s.special.size) s.special = undefined;
+  }
   const [lost] = s.members.splice(i, 1);
   s.layout = undefined;
   b.fallen = [
@@ -551,6 +615,54 @@ export function casualty(b: Battle, s: Squad): boolean {
   news(b, "wiped", { s: s.name });
   return true;
 }
+// Raiders march at the pace of their slowest troop, this many times slower
+// than your squads: riders come fast, lancers take their time.
+export const RAID_PACE = 2.5;
+// How far a squad shoots: the scorpion reaches three cells.
+export const reachOf = (s: Squad) =>
+  s.special?.kind === "scorpion" ? SCORPION_RANGE : RANGE;
+// A hero cheers its own squad and those next to it.
+export const inspired = (b: Battle, s: Squad) =>
+  b.squads.some(
+    (h) =>
+      h.special?.kind === "hero" &&
+      Math.hypot(
+        squadPosition(b, h).x - squadPosition(b, s).x,
+        squadPosition(b, h).y - squadPosition(b, s).y,
+      ) <
+        DX * 1.65,
+  );
+// What a squad's state does to the blows it deals...
+function dealt(b: Battle, s: Squad, volley: boolean) {
+  let k = 1;
+  if (b.squads.some((u) => u.id === s.id) && inspired(b, s)) k *= HERO_HIT;
+  if (volley) return k * (s.stance === "skirmish" ? 0.8 : 1);
+  const sp = s.special;
+  if (sp?.kind === "knights") k *= 1 + 0.08 * sp.size;
+  if (sp?.kind === "scorpion") k *= 1 - 0.12 * sp.size;
+  if ((s.tiredUntil ?? -1) > b.time) k *= 0.6;
+  if (s.stance === "charge") {
+    k *= sp?.kind === "knights" ? 2.5 : 2;
+    s.stance = undefined;
+    s.tiredUntil = b.time + TIRED;
+  }
+  return k;
+}
+// ...and to the blows it takes.
+function taken(b: Battle, s: Squad, zone: string, volley: boolean) {
+  let k = s.special?.kind === "wagon" ? 0.8 : 1;
+  if (s.stance === "wall") k *= volley ? 1.3 : zone === "front" ? 0.5 : 1;
+  if (
+    s.stance === "hold" &&
+    zone === "front" &&
+    b.time - (s.stanceAt ?? b.time) >= ENTRENCH
+  )
+    k *= 0.7;
+  return k;
+}
+// A hero's squad and its neighbours strike this much harder.
+export const HERO_HIT = 1.1;
+export const SCORPION_RANGE = DX * 3.2;
 // How far archers shoot: two cells, over whoever stands between.
 export const RANGE = DX * 2.2,
   // A volley from afar hurts less than a melee.
@@ -605,13 +717,14 @@ function stepRaid(b: Battle, r: Raid, dt: number) {
       s.members.includes("bow") &&
       !s.path.length &&
       !s.progress &&
-      distance(s) < RANGE,
+      distance(s) < reachOf(s),
   );
   const hit = (
     source: Squad,
     target: Squad,
     damage: number,
     enemy: boolean,
+    volley = false,
   ) => {
     const p = squadPosition(b, source),
       t = squadPosition(b, target),
@@ -620,7 +733,9 @@ function stepRaid(b: Battle, r: Raid, dt: number) {
       0,
       (target.cohesion ?? 100) -
         attackDamage(source, target, damage, rise(b, source, target), zone) *
-          (veteran(source) ? VETERAN_HIT : 1),
+          (veteran(source) ? VETERAN_HIT : 1) *
+          dealt(b, source, volley) *
+          taken(b, target, zone, volley),
     );
     target.lastHit = b.time;
     target.lastZone = zone;
@@ -641,10 +756,12 @@ function stepRaid(b: Battle, r: Raid, dt: number) {
         ...source,
         members: bows.map((i) => source.members[i]),
         layout: bows.map((i) => slots[i]),
+        special: undefined,
       },
       target,
       damage * VOLLEY,
       enemy,
+      true,
     );
     source.cooldown = 1.35;
     target.lastVolley = b.time;
@@ -761,7 +878,10 @@ function stepRaid(b: Battle, r: Raid, dt: number) {
       );
     for (const s of b.squads)
       if (!s.routing && !recentlyHit(b, s))
-        s.cohesion = Math.min(100, (s.cohesion ?? 100) + dt * 3);
+        s.cohesion = Math.min(
+          100,
+          (s.cohesion ?? 100) + dt * 3 * (inspired(b, s) ? 2 : 1),
+        );
   }
   r.pressure = 1 - e.cohesion / 100;
   if (e.cohesion <= 0) return destroy();
@@ -837,7 +957,8 @@ function stepRaid(b: Battle, r: Raid, dt: number) {
   const a = b.cells[e.cell],
     c = b.cells[next];
   e.facing = e.targetFacing = Math.atan2(c.y - a.y, c.x - a.x);
-  e.progress += dt / (r.phase === "retreat" ? 2 : r.slow ? 12 : 4.5);
+  e.progress +=
+    dt / (r.phase === "retreat" ? 2 : r.slow ? 12 : RAID_PACE * pace(e));
   if (e.progress >= 1) {
     e.cell = next;
     e.path.shift();

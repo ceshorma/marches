@@ -11,6 +11,9 @@
 - [x] Marca de veterano: el escuadrón que destruye dos incursiones lleva una estrella y golpea un 15 % más.
 - [ ] Más líneas para la crónica (hoy 2–6 por suceso) y sucesos nuevos: la tierra del clan crece, un escuadrón toma altura, un veterano cae.
 - [ ] ¿Las incursiones también al paso de su miembro más lento? (hoy todas a 4,5 s por casilla).
+- [ ] Acción Construir y obras (empalizada, estacas, trampas, atalaya), con su misión de campaña.
+- [ ] Ajustar las especiales jugando: hoy solo el balance simulado (caballeros/escorpión cada 3 incursiones, carreta con 30 casillas en La frontera).
+- [ ] La carreta en la campaña (hoy solo en La frontera) y un aviso visual del aura del héroe.
 - [ ] Objetivos variados por mapa (sostener el paso, que no crucen el vado, proteger una aldea en cada valle, tomar la meseta).
 
 ## Assets pendientes

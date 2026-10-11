@@ -18,6 +18,7 @@ import type { Item } from "./outpost";
 import { clash, guide, reasons } from "./guide";
 import { setSnapshot } from "./report";
 import { squadColor, veteran } from "./chronicle";
+import { ENTRENCH, isSpecial, specialMembers, specials } from "./units";
 import type { Tone } from "./guide";
 import { useEffect, useRef } from "react";
 import { Application, Container, Graphics, Text } from "pixi.js";
@@ -67,6 +68,8 @@ function text(
 }
 // Screen pixels the tray takes on the left edge.
 const TRAY = 80;
+// Special units wear gold.
+const SPECIAL = 0xb8862f;
 const ENEMY = 0xb4544b,
   GOOD = 0x3f7f4f,
   // Clan del Humo tokens: soot, with the notch and cohesion ring in ember red.
@@ -186,7 +189,87 @@ function token(
       });
     icon(g, s.members[i], px, py, 12, CREAM, alpha);
   }
+  // A special unit: one gold block over all its places, with its emblem.
+  const own = specialMembers(s);
+  if (s.special && own.length) {
+    const spots = own.map((i) => slotOffset(slots[i]));
+    const a0 = Math.min(...spots.map((p) => p.a)) - 8,
+      a1 = Math.max(...spots.map((p) => p.a)) + 8,
+      b0 = Math.min(...spots.map((p) => p.b)) - 8,
+      b1 = Math.max(...spots.map((p) => p.b)) + 8;
+    g.poly([
+      ...point(a0, b0),
+      ...point(a1, b0),
+      ...point(a1, b1),
+      ...point(a0, b1),
+    ])
+      .fill({ color: color === BLUE ? SPECIAL : color, alpha: alpha * faded })
+      .stroke({ color: CREAM, width: 1.6, alpha });
+    const [cx, cy] = point((a0 + a1) / 2, (b0 + b1) / 2);
+    icon(
+      g,
+      s.special.kind,
+      cx,
+      cy,
+      s.special.kind === "wagon" ? 22 : 14,
+      CREAM,
+      alpha,
+    );
+  }
+  // The tactical action, around the ring: stakes in front while holding
+  // (faint while digging in), a heavy front for the shield wall, chevrons
+  // ahead for a charge, a broken ring behind while skirmishing.
+  if (alpha > 0.5 && s.stance) {
+    const arc = (from: number, to: number, r: number) =>
+      g
+        .moveTo(x + Math.cos(angle + from) * r, y + Math.sin(angle + from) * r)
+        .arc(x, y, r, angle + from, angle + to);
+    if (s.stance === "hold") {
+      const dug = (s.stanceAt ?? 0) + ENTRENCH <= stanceClock;
+      for (let k = -2; k <= 2; k++) {
+        const t = angle + k * 0.28;
+        g.moveTo(x + Math.cos(t) * 31, y + Math.sin(t) * 31)
+          .lineTo(x + Math.cos(t) * 38, y + Math.sin(t) * 38)
+          .stroke({
+            color: INK,
+            width: 2.2,
+            alpha: dug ? 0.85 : 0.3,
+            cap: "round",
+          });
+      }
+    } else if (s.stance === "wall")
+      arc(-0.75, 0.75, 33).stroke({
+        color: BLUE,
+        width: 5,
+        alpha: 0.85,
+        cap: "round",
+      });
+    else if (s.stance === "charge")
+      for (const d of [36, 43]) {
+        const [p1, p2, p3] = [
+          point(d - 4, -6),
+          point(d + 2, 0),
+          point(d - 4, 6),
+        ];
+        g.moveTo(p1[0], p1[1])
+          .lineTo(p2[0], p2[1])
+          .lineTo(p3[0], p3[1])
+          .stroke({ color: SPECIAL, width: 2.4, cap: "round" });
+      }
+    else if (s.stance === "skirmish")
+      for (let k = 0; k < 5; k++)
+        arc(Math.PI - 0.9 + k * 0.4, Math.PI - 0.75 + k * 0.4, 34).stroke({
+          color: BLUE,
+          width: 2,
+          alpha: 0.8,
+        });
+  }
+  // Spent after a charge: the ring dims.
+  if (alpha > 0.5 && (s.tiredUntil ?? -1) > stanceClock)
+    g.circle(x, y, 29).stroke({ color: CREAM, width: 3, alpha: 0.6 });
 }
+// The battle clock, for the token's timed marks (set each frame).
+let stanceClock = 0;
 // Each squad of yours carries its own pennant, in its colour; a veteran
 // squad wears a star above it.
 function pennant(g: Graphics, s: Squad, x: number, y: number) {
@@ -600,11 +683,17 @@ export default function Board() {
       // same as anywhere on the map. k: world units per tray unit.
       const yard = () => px(20) / 16;
       const kits = () => b.outpost?.kits ?? 0;
+      // Towers and special units wait in a row below the troops (two spots).
+      const extras = (): Item[] =>
+        [
+          ...Array<Item>(kits()).fill("tower"),
+          ...(b.outpost?.specials ?? []),
+        ].slice(0, 2);
       const trayRect = () => {
         const k = yard(),
           w = 44 * k,
           // Towers to place sit in a row below the troops.
-          h = (62 + (kits() ? 22 : 0)) * k,
+          h = (62 + (extras().length ? 22 : 0)) * k,
           top = app.screen.width < 700 ? 170 : 130,
           sy = Math.max(top, (top + app.screen.height - 100) / 2 - 31 * 1.25);
         return {
@@ -623,7 +712,7 @@ export default function Board() {
             x: t.x + t.w / 2 + (i < 3 ? 10 : -10) * k,
             y: t.y + 31 * k + ((i % 3) - 1) * 19 * k,
           })),
-          ...Array.from({ length: Math.min(2, kits()) }, (_, i) => ({
+          ...Array.from({ length: extras().length }, (_, i) => ({
             x: t.x + t.w / 2 + (i ? -10 : 10) * k,
             y: t.y + 72 * k,
           })),
@@ -634,17 +723,23 @@ export default function Board() {
         const troops: (Item | undefined)[] = queue(b.outpost!);
         return [
           ...Array.from({ length: FORT_CAP }, (_, i) => troops[i]),
-          ...Array<Item>(Math.min(2, kits())).fill("tower"),
+          ...extras(),
         ];
       };
-      // Squads that can take one more troop where they stand.
-      const hosts = () =>
-        b.squads.filter(
-          (u) => u.members.length < 6 && !deploymentError(b, u.cell),
+      // Squads that can take one more troop (or a special unit's places)
+      // where they stand.
+      const hosts = (item: Item = "shield") =>
+        b.squads.filter((u) =>
+          isSpecial(item)
+            ? !u.special &&
+              u.members.length + specials[item].size <= 6 &&
+              (!deploymentError(b, u.cell) ||
+                deploymentError(b, u.cell) === "Escuadrón completo")
+            : u.members.length < 6 && !deploymentError(b, u.cell),
         );
-      // The squad under a point that can take one more troop.
-      const hostAt = (p: { x: number; y: number }) =>
-        hosts().find((u) => {
+      // The squad under a point that can take it.
+      const hostAt = (p: { x: number; y: number }, item: Item = "shield") =>
+        hosts(item).find((u) => {
           const w = squadPosition(b, u);
           return Math.hypot(w.x - p.x, w.y - p.y) < Math.max(R * 0.8, reach());
         });
@@ -660,7 +755,13 @@ export default function Board() {
           return true;
         }
         // Anywhere on a squad joins it; its formation arranges itself.
-        const host = hostAt(p);
+        const host = hostAt(p, type);
+        if (isSpecial(type)) {
+          const id = host?.cell ?? cellAt(p);
+          if (id < 0 || (!host && deploymentError(b, id))) return false;
+          s.dropSpecial(id, type);
+          return true;
+        }
         if (host) return (s.dropTroop(host.cell, type), true);
         const id = cellAt(p);
         if (id < 0 || deploymentError(b, id)) return false;
@@ -810,6 +911,7 @@ export default function Board() {
           };
           down = null;
           drag = null;
+          useTactics.setState({ aiming: false });
           capture(e.pointerId);
           return;
         }
@@ -828,6 +930,7 @@ export default function Board() {
           if (index >= 0) {
             lift = e.pointerType === "touch" ? px(48) : 0;
             drag = { type: items[index]!, index, x: p.x, y: p.y - lift };
+            useTactics.setState({ aiming: true });
           }
         }
         down = {
@@ -904,6 +1007,7 @@ export default function Board() {
         if (drag) {
           const { type, index, x, y } = drag;
           drag = null;
+          useTactics.setState({ aiming: false });
           if (moved) drop({ x, y }, type);
           // A tap picks the troop up (or puts it back); the next tap places it.
           else
@@ -961,6 +1065,7 @@ export default function Board() {
         hover = -1;
         down = null;
         drag = null;
+        useTactics.setState({ aiming: false });
       };
       canvas.addEventListener("pointerdown", pointerDown);
       canvas.addEventListener("pointermove", pointerMove);
@@ -1008,6 +1113,7 @@ export default function Board() {
         transform();
         const s = useTactics.getState();
         overlay.clear();
+        stanceClock = b.time;
 
         if (
           b.sectors &&
@@ -1807,7 +1913,13 @@ export default function Board() {
                 16 * k,
                 4 * k,
               )
-              .fill(items[i] === "tower" ? art.P.stoneDark : BLUE)
+              .fill(
+                items[i] === "tower"
+                  ? art.P.stoneDark
+                  : isSpecial(items[i]!)
+                    ? SPECIAL
+                    : BLUE,
+              )
               .stroke({ color: CREAM, width: 1.5 });
             icon(
               overlay,
@@ -1920,8 +2032,8 @@ export default function Board() {
                 .stroke({ color: BLUE, width: over ? 3 : 2, alpha: 0.6 });
             }
             // Squads with room light up as a whole: drop anywhere on them.
-            const target = hostAt(at);
-            for (const u of hosts()) {
+            const target = hostAt(at, handType);
+            for (const u of hosts(handType)) {
               const w = squadPosition(b, u),
                 near = u === target;
               overlay
@@ -1953,7 +2065,13 @@ export default function Board() {
                   18 * g,
                   4 * g,
                 )
-                .fill(drag.type === "tower" ? art.P.stoneDark : BLUE)
+                .fill(
+                  drag.type === "tower"
+                    ? art.P.stoneDark
+                    : isSpecial(drag.type)
+                      ? SPECIAL
+                      : BLUE,
+                )
                 .stroke({ color: CREAM, width: 1.5 });
               icon(overlay, drag.type, drag.x, drag.y, 14 * g, CREAM);
             }

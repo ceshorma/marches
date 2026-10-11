@@ -3,7 +3,7 @@ import { missions, waveProgress } from "./campaign";
 import { TroopIcon } from "./icons";
 import { activeRaids } from "./model";
 import type { Battle } from "./model";
-import { held, upcoming } from "./outpost";
+import { callable, held, upcoming } from "./outpost";
 import { composition, troopTypes, troopNames } from "./combat";
 import type { TroopType } from "./combat";
 import { useEffect, useState } from "react";
@@ -18,11 +18,17 @@ import {
   Menu,
   Download,
   Upload,
+  Flag,
+  Shield,
+  ChevronsRight,
+  Wind,
 } from "lucide-react";
+import { specials, stances, stancesFor } from "./units";
+import type { Stance } from "./units";
 import { readReport, takeSnapshot, writeReport } from "./report";
 import { mapNames, maps } from "./maps";
 import Board from "./Board";
-import { useTactics } from "./state";
+import { SLOW, slowed, useTactics } from "./state";
 import "./tactics.css";
 export default function TacticalApp() {
   const s = useTactics(),
@@ -103,7 +109,7 @@ export default function TacticalApp() {
         acc = 0;
         return;
       }
-      acc += dt * g.speed;
+      acc += dt * g.speed * (slowed(g, now) ? SLOW : 1);
       while (acc >= 0.05) {
         g.tick(0.05);
         acc -= 0.05;
@@ -231,6 +237,11 @@ export default function TacticalApp() {
             }
           >
             {s.speed}×
+            {slowed(s, performance.now()) && (
+              <em className="slow" title="El tiempo va lento mientras decides">
+                lento
+              </em>
+            )}
           </button>
           <button
             aria-label={s.paused ? "Reanudar" : "Pausar"}
@@ -266,8 +277,35 @@ export default function TacticalApp() {
                 {Math.ceil(unit.cohesion ?? 100)}%
               </span>
             )}
-            <span>{composition(unit)}</span>
+            <span>
+              {unit.special &&
+                `${unit.special.name ?? specials[unit.special.kind].name} (${unit.special.size}) · `}
+              {composition(unit)}
+            </span>
           </div>
+          {outpost && (
+            <div className="actions" aria-label="Acciones tácticas">
+              {stancesFor(unit).map((k) => {
+                const Icon = stanceIcons[k],
+                  on = unit.stance === k,
+                  tired =
+                    k === "charge" && (unit.tiredUntil ?? -1) > s.battle.time;
+                return (
+                  <button
+                    key={k}
+                    className={on ? "chosen" : ""}
+                    disabled={tired || !!unit.routing}
+                    aria-pressed={on}
+                    title={`${stances[k].name}\n+ ${stances[k].gain}\n− ${stances[k].cost}`}
+                    onClick={() => s.act(on ? null : k)}
+                  >
+                    <Icon size={17} />
+                    <span>{stances[k].name}</span>
+                  </button>
+                );
+              })}
+            </div>
+          )}
           <button aria-label="Cerrar selección" onClick={() => s.select(null)}>
             <X size={17} />
           </button>
@@ -577,6 +615,12 @@ export default function TacticalApp() {
   );
 }
 
+const stanceIcons: Record<Stance, typeof Flag> = {
+  hold: Flag,
+  wall: Shield,
+  charge: ChevronsRight,
+  skirmish: Wind,
+};
 const hexColor = (c: number) => `#${c.toString(16).padStart(6, "0")}`;
 // The chronicle: the latest news of the march at the bottom of the screen.
 // The newest line is clear, the one before it fades; old news goes away.
@@ -660,6 +704,15 @@ function Timeline({ battle }: { battle: Battle }) {
             <i key={i} className={i < progress.done ? "done" : ""} />
           ))}
         </div>
+      )}
+      {callable(battle) && (
+        <button
+          className="call"
+          title="Adelanta el siguiente asalto; la aldea manda una tropa más"
+          onClick={() => useTactics.getState().call()}
+        >
+          ¡Que vengan! +1
+        </button>
       )}
       <div className="track">
         <div className="now" />

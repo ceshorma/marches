@@ -1,5 +1,10 @@
 // Balance check: plays every campaign mission with simple scripted players
-// and prints how each went. Run with `npx tsx scripts/sim.ts`.
+// and prints how each went, and its rhythm: decisions per minute (weighty
+// ones: a wave sets out, a special or a tower to place; chores: a troop or
+// levy arriving), the longest quiet stretch and the most threats at once.
+// Targets (docs/territorio.md): 2–4 weighty and 6–10 in all per minute, a
+// valley of 25–40 s after each assault, at most 3 threats at once.
+// Run with `npx tsx scripts/sim.ts`.
 import {
   createMission,
   updateMission,
@@ -23,7 +28,21 @@ for (const [label, player] of players) {
       casualties = 0,
       looted = 0,
       maxYard = 0,
-      minCohesion = 100;
+      minCohesion = 100,
+      weighty = 0,
+      chores = 0,
+      peak = 0,
+      lastEvent = 0,
+      quiet = 0,
+      arrivals = b.outpost!.arrivals,
+      spawned = 0,
+      specials = 0;
+    const event = (weight: boolean) => {
+      if (weight) weighty++;
+      else chores++;
+      quiet = Math.max(quiet, b.time - lastEvent);
+      lastEvent = b.time;
+    };
     for (let k = 0; k < 900 * 20 && b.lesson!.status === "active"; k++) {
       advance(b, 0.05);
       updateMission(b);
@@ -44,6 +63,23 @@ for (const [label, player] of players) {
       for (const u of b.squads)
         if (u.engaged) minCohesion = Math.min(minCohesion, u.cohesion ?? 100);
       maxYard = Math.max(maxYard, waiting(b.outpost!));
+      const o = b.outpost!;
+      // A levy is one decision, however many troops it brings.
+      if (o.arrivals > arrivals) event(false);
+      arrivals = o.arrivals;
+      if (o.script!.spawned > spawned) event(true);
+      spawned = o.script!.spawned;
+      if ((o.specials?.length ?? 0) > specials) event(true);
+      specials = o.specials?.length ?? 0;
+      for (const r of b.raids ?? [])
+        if (r.troop.engaged && !seen.has(`c${r.troop.id}`)) {
+          seen.add(`c${r.troop.id}`);
+          event(true);
+        }
+      peak = Math.max(
+        peak,
+        (b.raids ?? []).filter((r) => !r.slow && !r.guard).length,
+      );
     }
     const o = b.outpost!;
     console.log(
@@ -54,6 +90,7 @@ for (const [label, player] of players) {
         `destruidas ${destroyed} saqueos ${looted} bajas ${casualties}`,
         `torres caídas ${o.lostTowers} rechazadas ${o.turnedAway} patio máx ${maxYard}`,
         `cohesión mín ${minCohesion.toFixed(0)}`,
+        `ritmo ${((weighty + chores) / (b.time / 60)).toFixed(1)}/min (peso ${(weighty / (b.time / 60)).toFixed(1)}) silencio ${Math.max(quiet, b.time - lastEvent).toFixed(0)}s amenazas ${peak}`,
       ].join(" · "),
     );
   }

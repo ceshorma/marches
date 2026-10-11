@@ -31,11 +31,16 @@ test("new land is settled over time once held", () => {
   addReserveTroop(b, cell(4, 8), "shield");
   placeTower(b, cell(7, 8));
   order(b, b.squads[0].id, cell(7, 8));
-  run(b, 20);
+  // The first rider comes soon and holds up the building for a while.
+  run(b, 45);
   assert.ok(b.outpost!.sites[0].active);
+  // Peace from here on: no more assaults burn the ground being settled.
+  b.raids = [];
+  b.outpost!.script!.cleared = Infinity;
   const near = cell(8, 8);
   const before = b.outpost!.settled![near];
-  run(b, SETTLE);
+  // The rider ate this ground: it is held again first, then settled.
+  run(b, SETTLE + 15);
   assert.ok(b.outpost!.settled![near] > before);
   assert.equal(b.outpost!.settled![near], 1);
 });

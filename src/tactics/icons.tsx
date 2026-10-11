@@ -1,11 +1,38 @@
 import type { TroopType } from "./combat";
+import type { SpecialKind } from "./units";
 // One icon per troop type, shared by the map tokens (as vector paths) and the
 // interface (as SVG): lance, bow, horse head; and a tower for the ones that
 // wait in the tray to be placed. Drawn on a 20 × 20 box.
 export const iconPaths: Record<
-  TroopType | "tower",
+  TroopType | "tower" | SpecialKind,
   { d: string; fill?: boolean }[]
 > = {
+  // A knight's great helm with a plume.
+  knights: [
+    { d: "M5 18 L5 9 Q5 4 10 4 Q15 4 15 9 L15 18 Z", fill: true },
+    { d: "M10 4 Q12 1 16 1.5" },
+  ],
+  // A scorpion: a heavy bow laid flat, its bolt pointing ahead.
+  scorpion: [
+    { d: "M2.5 8 Q10 14 17.5 8" },
+    { d: "M10 18 L10 4" },
+    { d: "M10 1.5 L7.6 5.5 L12.4 5.5 Z", fill: true },
+    { d: "M6 18 L14 18" },
+  ],
+  // A war wagon: a boarded cart on two wheels.
+  wagon: [
+    { d: "M2 5 L18 5 L18 13 L2 13 Z", fill: true },
+    {
+      d: "M3.5 16 Q3.5 13.5 6 13.5 Q8.5 13.5 8.5 16 Q8.5 18.5 6 18.5 Q3.5 18.5 3.5 16 Z",
+      fill: true,
+    },
+    {
+      d: "M11.5 16 Q11.5 13.5 14 13.5 Q16.5 13.5 16.5 16 Q16.5 18.5 14 18.5 Q11.5 18.5 11.5 16 Z",
+      fill: true,
+    },
+  ],
+  // A hero: a crown.
+  hero: [{ d: "M3 16 L3 6 L7 10 L10 3.5 L13 10 L17 6 L17 16 Z", fill: true }],
   // A spear behind a heater shield.
   shield: [
     { d: "M3 18 L16 5" },
@@ -42,7 +69,7 @@ export function TroopIcon({
   size = 18,
   className,
 }: {
-  type: TroopType | "tower";
+  type: TroopType | "tower" | SpecialKind;
   size?: number;
   className?: string;
 }) {
