@@ -13,6 +13,14 @@ const hex = (x: number, y: number, r = R) =>
   }).flat();
 type Entry = [string, (g: Graphics, x: number, y: number, t: number) => void];
 const entries: Entry[] = [
+  ["Roble", (g, x, y) => art.oak(g, x, y, 1.6, 4)],
+  ["Tronco caído", (g, x, y) => art.fallenLog(g, x, y)],
+  ["Frutales", (g, x, y) => art.orchard(g, x, y, 4)],
+  ["Huerto", (g, x, y) => art.garden(g, x, y)],
+  ["Almiares", (g, x, y) => art.haystacks(g, x, y)],
+  ["Rebaño", (g, x, y) => art.sheep(g, x, y, 7)],
+  ["Granero elevado", (g, x, y) => art.granary(g, x, y)],
+
   ["Fuerte", (g, x, y) => art.fort(g, x, y)],
   ["Torre", (g, x, y) => art.tower(g, x, y)],
   ["Obra 60 %", (g, x, y) => art.scaffold(g, x, y, 0.6)],
@@ -57,7 +65,15 @@ export default function Sheet() {
       cleanup = () => {};
     void (async () => {
       await app.init({
-        resizeTo: window,
+        width: window.innerWidth,
+        height:
+          Math.ceil(
+            entries.length /
+              Math.max(2, Math.floor(window.innerWidth / (100 * scale))),
+          ) *
+            110 *
+            scale +
+          50,
         background: 0xf5f3ec,
         antialias: true,
       });
@@ -101,8 +117,8 @@ export default function Sheet() {
     };
   }, [scale]);
   return (
-    <div style={{ position: "fixed", inset: 0 }}>
-      <div ref={ref} style={{ position: "absolute", inset: 0 }} />
+    <div style={{ position: "fixed", inset: 0, overflowY: "auto" }}>
+      <div ref={ref} style={{ position: "relative" }} />
       <div
         style={{
           position: "absolute",

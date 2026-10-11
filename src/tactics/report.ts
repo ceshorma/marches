@@ -1,3 +1,4 @@
+import { validReport } from "./report-validation";
 import type { Battle } from "./model";
 // A game report: everything needed to see and reload a game exactly as it
 // was, in one file the player can send. The board adds a picture of the map.
@@ -29,8 +30,7 @@ export function writeReport(r: Omit<Report, "game" | "version" | "savedAt">) {
 }
 export function readReport(text: string): Report {
   const report = JSON.parse(text, decode) as Report;
-  if (report?.game !== "marches" || !report.battle?.cells)
-    throw new Error("No es un informe de MARCHES");
+  if (!validReport(report)) throw new Error("No es un informe de MARCHES");
   return report;
 }
 // The map picture, provided by the board while it is mounted.

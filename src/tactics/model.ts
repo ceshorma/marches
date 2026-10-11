@@ -690,6 +690,14 @@ export function advanceRaid(b: Battle, dt: number) {
     }
   }
   for (const r of activeRaids(b)) stepRaid(b, r, dt);
+  // Recovery belongs to the world tick, not to each enemy's turn.
+  // Resolve every attack first so another front cannot heal troops under fire.
+  for (const s of b.squads)
+    if (!s.routing && !s.engaged && !recentlyHit(b, s))
+      s.cohesion = Math.min(
+        100,
+        (s.cohesion ?? 100) + dt * 3 * (inspired(b, s) ? 2 : 1),
+      );
 }
 function stepRaid(b: Battle, r: Raid, dt: number) {
   const e = r.troop;
@@ -876,12 +884,6 @@ function stepRaid(b: Battle, r: Raid, dt: number) {
         r.strength ?? (b.outpost ? 30 : 100),
         e.cohesion + dt * 2,
       );
-    for (const s of b.squads)
-      if (!s.routing && !recentlyHit(b, s))
-        s.cohesion = Math.min(
-          100,
-          (s.cohesion ?? 100) + dt * 3 * (inspired(b, s) ? 2 : 1),
-        );
   }
   r.pressure = 1 - e.cohesion / 100;
   if (e.cohesion <= 0) return destroy();
