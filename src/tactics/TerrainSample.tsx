@@ -11,28 +11,41 @@ const hex = (x: number, y: number, r = R) =>
     const a = ((i * 60 - 30) * Math.PI) / 180;
     return [x + Math.cos(a) * r, y + Math.sin(a) * r];
   }).flat();
-const terrace = [
-  330, 155, 380, 90, 475, 65, 565, 85, 665, 130, 710, 215, 680, 290, 605, 320,
-  555, 302, 510, 280, 455, 306, 385, 280, 330, 220,
-];
-const summit = [
-  425, 155, 455, 122, 522, 118, 583, 147, 610, 190, 585, 225, 530, 238, 470,
-  218, 432, 190,
-];
-// Two corner-cutting passes retain the landform while removing polygon corners.
-function smooth(points: number[], passes = 2): number[] {
-  if (!passes) return points;
-  const out: number[] = [];
-  for (let i = 0; i < points.length; i += 2) {
-    const j = (i + 2) % points.length;
-    out.push(
-      points[i] * 0.75 + points[j] * 0.25,
-      points[i + 1] * 0.75 + points[j + 1] * 0.25,
-      points[i] * 0.25 + points[j] * 0.75,
-      points[i + 1] * 0.25 + points[j + 1] * 0.75,
-    );
+// Crown silhouette is lobed and shaded, never a stack of circles.
+function crown(
+  g: Graphics,
+  x: number,
+  y: number,
+  r: number,
+  seed: number,
+  pine: boolean,
+) {
+  const points: number[] = [];
+  const n = pine ? 24 : 32;
+  for (let i = 0; i < n; i++) {
+    const a = (i * Math.PI * 2) / n;
+    const reach =
+      r * (pine ? (i % 2 ? 0.58 : 1) : 0.85 + art.rnd(seed, i) * 0.18);
+    points.push(x + Math.cos(a) * reach, y + Math.sin(a) * reach);
   }
-  return smooth(out, passes - 1);
+  g.poly(points.map((v, i) => v + (i % 2 ? 2.2 : 1.6))).fill({
+    color: 0x273c2b,
+    alpha: 0.19,
+  });
+  g.poly(points)
+    .fill(pine ? 0x4e6950 : 0x5c7950)
+    .stroke({ color: 0x3e563d, width: 0.7, alpha: 0.7 });
+  for (let i = 0; i < 5; i++) {
+    const a = i * 2.4,
+      px = x + Math.cos(a) * r * 0.34,
+      py = y + Math.sin(a) * r * 0.34;
+    const lobe = Array.from({ length: 14 }, (_, j) => {
+      const angle = (j * Math.PI) / 7,
+        rr = r * (0.28 + art.rnd(seed + i, j) * 0.12);
+      return [px + Math.cos(angle) * rr, py + Math.sin(angle) * rr];
+    }).flat();
+    g.poly(lobe).fill(i < 2 ? 0x8b9f68 : 0x718b5c);
+  }
 }
 export default function TerrainSample() {
   const ref = useRef<HTMLDivElement>(null);
@@ -55,113 +68,187 @@ export default function TerrainSample() {
         g = new Graphics();
       world.addChild(g);
       app.stage.addChild(world);
-      const cells = Array.from({ length: 150 }, (_, id) => ({
-        id,
-        x: 35 + DX * ((id % 15) + (Math.floor(id / 15) % 2) * 0.5),
-        y: 40 + Math.floor(id / 15) * R * 1.5,
-      }));
-      for (const c of cells) g.poly(hex(c.x, c.y)).fill(0xdce0c1);
-      g.poly(smooth(terrace))
-        .fill(0xb2bd91)
-        .stroke({ color: 0x6d7855, width: 1.3 });
-      g.poly(smooth(summit))
-        .fill(0x83976b)
-        .stroke({ color: 0x5b6b43, width: 1.3 });
-      // Inset contours follow the same landforms, no triangulated hex textures.
-      const inset = (p: number[], cx: number, cy: number, k: number) =>
-        p.map((v, i) => (i % 2 ? cy : cx) + (v - (i % 2 ? cy : cx)) * k);
-      g.poly(smooth(inset(terrace, 520, 195, 0.94))).stroke({
-        color: 0xe7e8c9,
-        width: 1.2,
-        alpha: 0.85,
+      // All visuals derive from one cell record: never paint terrain across cells.
+      const cells = Array.from({ length: 150 }, (_, id) => {
+        const q = id % 15,
+          r = Math.floor(id / 15);
+        const x = 35 + DX * (q + (r % 2) * 0.5),
+          y = 40 + r * R * 1.5;
+        const high =
+          (r === 2 && q >= 7 && q <= 8) || (r === 3 && q >= 6 && q <= 8);
+        const ranges: Record<number, [number, number]> = {
+          1: [6, 8],
+          2: [5, 9],
+          3: [5, 9],
+          4: [5, 9],
+          5: [6, 8],
+        };
+        const hill = !!ranges[r] && q >= ranges[r][0] && q <= ranges[r][1];
+        const forest =
+          q >= 1 && q <= 3 && r >= 3 && r <= 6 && !(q === 3 && r === 6);
+        const pine = q >= 10 && q <= 11 && r >= 1 && r <= 3;
+        const water = q === (r < 3 ? 13 : r < 8 ? 12 : 13);
+        return {
+          id,
+          q,
+          r,
+          x,
+          y,
+          height: high ? 30 : hill ? 15 : 0,
+          kind: water
+            ? r === 6
+              ? "ford"
+              : "water"
+            : forest
+              ? "forest"
+              : pine
+                ? "pine"
+                : "plain",
+        };
       });
-      g.poly(smooth(inset(summit, 520, 180, 0.91))).stroke({
-        color: 0xcbd2a4,
-        width: 1,
-        alpha: 0.8,
-      });
-      // Fine, irregular slope marks follow the rounded contour, leaving the access clear.
-      const edge = smooth(terrace);
-      for (let i = 0; i < edge.length; i += 4) {
-        const j = (i + 2) % edge.length,
-          x = edge[i],
-          y = edge[i + 1],
-          dx = edge[j] - x,
-          dy = edge[j + 1] - y;
-        if (y > 270 && x > 400 && x < 590) continue;
-        const len = Math.hypot(dx, dy) || 1,
-          depth = 3 + art.rnd(i, 9) * 4;
-        g.moveTo(x, y)
-          .lineTo(x + (dy / len) * depth, y - (dx / len) * depth)
-          .stroke({ color: 0x727c59, width: 0.75, alpha: 0.4 });
-      }
-      for (const c of cells)
+      const lookup = new Map(cells.map((c) => [c.q + "," + c.r, c]));
+      const neighbor = (c: (typeof cells)[number], k: number) => {
+        const odd = c.r % 2;
+        const offsets = [
+          [1, 0],
+          [odd, 1],
+          [odd - 1, 1],
+          [-1, 0],
+          [odd - 1, -1],
+          [odd, -1],
+        ];
+        const [dq, dr] = offsets[k];
+        return lookup.get(c.q + dq + "," + (c.r + dr));
+      };
+      const edge = (c: (typeof cells)[number], k: number, inset = 0) => {
+        const pts = hex(c.x, c.y, R - inset),
+          j = k * 2,
+          n = ((k + 1) % 6) * 2;
+        return [pts[j], pts[j + 1], pts[n], pts[n + 1]];
+      };
+      const strokeEdge = (
+        c: (typeof cells)[number],
+        k: number,
+        color: number,
+        width: number,
+        alpha = 1,
+        inset = 0,
+      ) => {
+        const [x, y, xx, yy] = edge(c, k, inset);
+        g.moveTo(x, y).lineTo(xx, yy).stroke({ color, width, alpha });
+      };
+      const wet = (c: (typeof cells)[number] | undefined) =>
+        c?.kind === "water" || c?.kind === "ford";
+      const wooded = (c: (typeof cells)[number] | undefined) =>
+        c?.kind === "forest" || c?.kind === "pine";
+      for (const c of cells) {
+        const color = wet(c)
+          ? c.kind === "ford"
+            ? 0xb2c7bd
+            : 0xa4c6cb
+          : c.height === 30
+            ? 0x7e915e
+            : c.height === 15
+              ? 0xa8b37e
+              : wooded(c)
+                ? 0x9fae84
+                : 0xd5d7af;
+        g.poly(hex(c.x, c.y)).fill(color);
         g.poly(hex(c.x, c.y)).stroke({
           color: 0x596746,
-          width: 0.7,
-          alpha: 0.11,
+          width: 0.65,
+          alpha: 0.16,
         });
-      // Variable-width banks replace the uniform pipe-shaped river.
-      const bank = (extra: number) => {
-        const left: number[] = [],
-          right: number[] = [];
-        for (let y = 0; y <= 590; y += 8) {
-          const x = 851 + Math.sin(y / 78) * 17 + Math.sin(y / 37) * 4;
-          const w =
-            10 + Math.sin(y / 53) * 2.5 + Math.cos(y / 29) * 1.3 + extra;
-          left.push(x - w, y);
-          right.unshift(x + w, y);
-        }
-        return [...left, ...right];
-      };
-      g.poly(bank(4)).fill(0xe2dfbf);
-      g.poly(bank(1)).fill(0x729fa9);
-      g.poly(bank(0)).fill(0xa4c6cb);
-      for (let i = 0; i < 18; i++) {
-        const y = 20 + i * 31,
-          x = 851 + Math.sin(y / 78) * 17 + Math.sin(y / 37) * 4;
-        g.moveTo(x - 3, y)
-          .quadraticCurveTo(x + 1, y + 4, x - 1, y + 10)
-          .stroke({ color: 0xe1eef0, width: 0.8, alpha: 0.55 });
       }
-      for (let i = 0; i < 7; i++) {
-        const y = 349 + i * 1.8,
-          x = 851 + Math.sin(y / 78) * 17 + Math.sin(y / 37) * 4 - 10 + i * 3;
-        g.ellipse(x, y, 2.3 + art.rnd(i) * 1.3, 1.8).fill(0xd1d1b9);
-      }
-      // Continuous irregular stands: jittered spacing, varied crown sizes, no rosettes.
-      for (let row = 0; row < 23; row++)
-        for (let col = 0; col < 48; col++) {
-          const seed = row * 48 + col;
-          const x = col * 21 + 12 + (art.rnd(seed, 1) - 0.5) * 12;
-          const y = row * 21 + 46 + (art.rnd(seed, 2) - 0.5) * 12;
-          const oak =
-            ((x - 146) / 111) ** 2 + ((y - 246) / 126) ** 2 <
-            1 + 0.12 * Math.sin(y / 21);
-          const pine =
-            ((x - 756) / 57) ** 2 + ((y - 180) / 94) ** 2 <
-            1 + 0.13 * Math.sin(y / 17);
-          if (!oak && !pine) continue;
-          const size = 0.72 + art.rnd(seed, 3) * 0.53;
-          (pine ? art.pine : art.oak)(g, x, y, size, seed);
-        }
       for (const c of cells)
-        if (c.y > 375 && c.x < 740 && art.rnd(c.id, 7) < 0.09)
+        for (let k = 0; k < 6; k++) {
+          const n = neighbor(c, k);
+          if (n && c.height > n.height && !wet(c)) {
+            // A narrow stone lip stays entirely inside the higher hex.
+            const outer = edge(c, k),
+              inner = edge(c, k, 5);
+            g.poly([
+              outer[0],
+              outer[1],
+              outer[2],
+              outer[3],
+              inner[2],
+              inner[3],
+              inner[0],
+              inner[1],
+            ])
+              .fill(0xd8d4b9)
+              .stroke({ color: 0x7e8461, width: 0.7, alpha: 0.8 });
+            strokeEdge(c, k, 0xf0ecd5, 1.3, 0.95, 5);
+            const [x, y, xx, yy] = edge(c, k),
+              dx = xx - x,
+              dy = yy - y,
+              len = Math.hypot(dx, dy);
+            for (let j = 1; j < 5; j++) {
+              const px = x + (dx * j) / 5,
+                py = y + (dy * j) / 5;
+              g.moveTo(px, py)
+                .lineTo(px - (dy / len) * 4, py + (dx / len) * 4)
+                .stroke({ color: 0x697951, width: 0.8, alpha: 0.5 });
+            }
+          }
+          if (wet(c) && n && !wet(n)) strokeEdge(c, k, 0xeee7cd, 3, 0.95, 1);
+          if (wooded(c) && !wooded(n)) strokeEdge(c, k, 0x647b59, 1.2, 0.6);
+        }
+      for (const c of cells) {
+        if (wooded(c)) {
+          const canopy = new Container(),
+            trees = new Graphics(),
+            mask = new Graphics();
+          mask.poly(hex(c.x, c.y, R - 2)).fill(0xffffff);
+          canopy.addChild(trees, mask);
+          trees.mask = mask;
+          world.addChild(canopy);
+          // Irregular packing within a cell; mask guarantees no crown crosses its edge.
+          for (let i = 0; i < 10; i++) {
+            const a = i * 2.399 + art.rnd(c.id, 9),
+              r = i === 0 ? 0 : 12 + art.rnd(c.id, i) * 19;
+            const x = c.x + Math.cos(a) * r,
+              y = c.y + Math.sin(a) * r;
+            crown(
+              trees,
+              x,
+              y,
+              9 + art.rnd(c.id, i + 20) * 4,
+              c.id * 13 + i,
+              c.kind === "pine",
+            );
+          }
+        } else if (wet(c)) {
+          if (c.kind === "ford") {
+            for (let i = 0; i < 6; i++)
+              g.ellipse(c.x - 22 + i * 9, c.y + (i % 2 ? 2 : -2), 3, 2).fill(
+                0xe2dfc7,
+              );
+          } else {
+            g.moveTo(c.x - 5, c.y - 12)
+              .quadraticCurveTo(c.x + 1, c.y - 5, c.x - 3, c.y + 3)
+              .stroke({ color: 0xe6f0ee, width: 1, alpha: 0.6 });
+          }
+        } else if (c.height === 0 && art.rnd(c.id, 7) < 0.08)
           art.grass(g, c.x, c.y, c.id);
-      for (const [label, x, y] of [
-        ["0", 490, 430],
-        ["+15", 400, 235],
-        ["+30", 520, 178],
+      }
+      for (const [id, label] of [
+        [112, "0"],
+        [65, "+15"],
+        [37, "+30"],
       ] as const) {
+        const c = cells[id];
         const text = new Text({
           text: label,
           style: {
             fontFamily: "Georgia",
             fontSize: 13,
-            fill: label === "+30" ? 0xf3f0db : 0x52613f,
+            fill: c.height === 30 ? 0xf3f0db : 0x52613f,
           },
         });
-        text.position.set(x, y);
+        text.anchor.set(0.5);
+        text.position.set(c.x, c.y);
         world.addChild(text);
       }
       let zoom = 1,
