@@ -59,3 +59,90 @@ test("loading a report puts that game on the board, paused", () => {
 test("anything else is refused", () => {
   assert.throws(() => readReport('{"hola": 1}'));
 });
+
+test("malformed reports are rejected before replacing the current game", () => {
+  const original = useTactics.getState().battle;
+  const valid = JSON.parse(
+    writeReport({
+      scenario: "campaign",
+      missionIndex: 0,
+      battle: createMission(0),
+    }),
+  );
+  const changes = [
+    (r: any) => {
+      r.version = 2;
+    },
+    (r: any) => {
+      r.battle.cells = [];
+    },
+    (r: any) => {
+      delete r.battle.squads;
+    },
+    (r: any) => {
+      r.missionIndex = 100;
+    },
+    (r: any) => {
+      r.battle.cells[0].id = 2;
+    },
+    (r: any) => {
+      r.battle.outpost.land = [1];
+    },
+    (r: any) => {
+      delete r.battle.outpost.reserve;
+    },
+    (r: any) => {
+      r.battle.outpost.sites[0] = {
+        cell: 999,
+        progress: 0,
+        active: false,
+        builtAt: null,
+      };
+    },
+    (r: any) => {
+      r.battle.raids = [{ troop: { cell: -1 } }];
+    },
+  ];
+  for (const change of changes) {
+    const bad = structuredClone(valid);
+    change(bad);
+    assert.throws(() =>
+      useTactics.getState().loadReport(readReport(JSON.stringify(bad))),
+    );
+    assert.equal(useTactics.getState().battle, original);
+  }
+  assert.throws(() => readReport('{"game":"marches","battle":{"cells":[]}}'));
+});
+
+test("reports round-trip every campaign mission and free-play map", async () => {
+  const { missions } = await import("../src/tactics/campaign");
+  const { createOutpost } = await import("../src/tactics/outpost");
+  const { maps } = await import("../src/tactics/maps");
+  const { createFrontsBattle } = await import("../src/tactics/fronts");
+  const { createBattle } = await import("../src/tactics/model");
+  const cases = [
+    ...missions.map((_, i) => ({
+      scenario: "campaign" as const,
+      missionIndex: i,
+      battle: createMission(i),
+    })),
+    ...Object.keys(maps).map((map) => ({
+      scenario: "outpost" as const,
+      missionIndex: 0,
+      battle: createOutpost(map as keyof typeof maps),
+    })),
+    {
+      scenario: "fronts" as const,
+      missionIndex: 0,
+      battle: createFrontsBattle(),
+    },
+    {
+      scenario: "village" as const,
+      missionIndex: 0,
+      battle: createBattle(true),
+    },
+  ];
+  for (const sample of cases) {
+    assert.doesNotThrow(() => readReport(writeReport(sample)), sample.scenario);
+  }
+});
